@@ -1,0 +1,14 @@
+services:
+  sishc:
+    image: ghcr.io/lanjelin/sishc:latest
+    container_name: sishc
+    volumes:
+      - ./config:/config
+      - ~/.ssh:/config/.ssh:ro
+    environment:
+      - TZ=Europe/Oslo
+      - PUID=1000 # defaults to 1000
+      - PGID=1000 # defaults to 1000
+#      - USE_COLOR=false # toggle color in logs
+#      - SISHC_OUTPUT_LOG="/config/sishc.log" # enable logging to file
+    restart: on-failure:10
