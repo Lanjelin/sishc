@@ -137,7 +137,11 @@ start_tunnel() {
           url=$(echo "$line" | grep -o 'http[s]\?://[^ ]\+') #P '(?<=https://).*')
           echo "$(colored_echo '32' 'INFO: Tunnel '$name' started successfully. Access it at') $(colored_echo '34' ''$url'')" | output_handler
         else
-          colored_echo "33" "WARNING: $name: $line" | output_handler
+          if [[ -n $(echo "$line" | sed -r 's/\x1B\[[0-9;]*m//g' | grep -E "\| ($name+(\.[a-zA-Z0-9-]+)*) \| [1-5][0-9][0-9] \|") ]]; then
+            echo "$line" | sed -E 's/^[0-9]{4}\/[0-9]{2}\/[0-9]{2} - [0-9]{2}:[0-9]{2}:[0-9]{2} \| /LOG: /' | output_handler
+          else
+            colored_echo "33" "WARNING: $name: $line" | output_handler
+          fi
         fi
       fi
     done
