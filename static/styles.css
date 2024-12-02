@@ -45,7 +45,7 @@ button {
   opacity: 1;
 }
 
-input.theme-light {
+.theme-light input {
   background-color: #ffffff; /* Light theme input background */
   color: #181c14;
   border: 1px solid #697565;
@@ -53,7 +53,7 @@ input.theme-light {
   border-radius: 5px;
 }
 
-input.theme-dark {
+.theme-dark input {
   background-color: #3c3d37; /* Dark theme input background */
   color: #ecdfcc;
   border: 1px solid #697565;
@@ -67,20 +67,22 @@ input:focus {
   box-shadow: 0 0 5px #72421f;
 }
 
-table.theme-light {
+.theme-light table {
   background-color: #ffffff; /* Light theme table background */
   color: #181c14;
   border: 1px solid #697565;
   width: 100%;
   border-collapse: collapse;
+  margin-top: 10px;
 }
 
-table.theme-dark {
+.theme-dark table {
   background-color: #3c3d37; /* Dark theme table background */
   color: #ecdfcc;
   border: 1px solid #697565;
   width: 100%;
   border-collapse: collapse;
+  margin-top: 10px;
 }
 
 table th,
@@ -89,12 +91,34 @@ table td {
   border: 1px solid #697565;
 }
 
-table.theme-light th,
-table.theme-light td {
-  background-color: #ecdfcc;
+.theme-light table th,
+.theme-light table td {
+  background-color: #ffffff;
 }
 
-table.theme-dark th,
-table.theme-dark td {
+.theme-dark table th,
+.theme-dark table td {
   background-color: #3c3d37;
+}
+
+.theme-dark thead th{
+  color: #ecdfcc;
+}
+
+.theme-dark label {
+  color: #ecdfcc;
+}
+
+.theme-dark h1 {
+  color: #ecdfcc;
+}
+
+.theme-dark ::placeholder {
+  color: #697565;
+}
+
+.theme-dark .box,
+.theme-dark .textarea {
+  background-color: #3c3d37;
+  color: #ecdfcc;
 }
