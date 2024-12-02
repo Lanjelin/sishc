@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <title>Edit Raw Config</title>
+  </head>
+  <body class="theme-light">
+    <section class="section">
+      <div class="container">
+        <h1 class="title">Edit Raw Config</h1>
+        <form method="post">
+          <div class="field">
+            <div class="control">
+              <textarea class="textarea" name="raw_content" rows="20">
+{{ raw_content }}</textarea
+              >
+            </div>
+          </div>
+          <div class="field">
+            <div class="control">
+              <button type="submit" class="button is-primary">
+                Save Changes
+              </button>
+              <a href="{{ url_for('index') }}" class="button is-link"
+                >Back to Tunnels</a
+              >
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+    <script>
+      document.body.classList.toggle(
+        "theme-dark",
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      );
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-ENV SISHC_OUTPUT_LOG="/dev/null"
+ENV SISHC_OUTPUT_LOG="/config/sishc.log"
 ENV SISHC_CONFIG_FILE="/config/config.yaml"
 ENV HOME="/config"
 ENV PUID=1000
@@ -17,7 +17,11 @@ RUN \
     shadow \
     openssh \
     su-exec \
-    autossh && \
+    autossh \
+    python3 \
+    py3-pip \
+    py3-yaml \
+    py3-flask && \
   wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
     chmod +x /usr/bin/yq && \
   apk del wget && \
@@ -27,4 +31,4 @@ WORKDIR /config
 VOLUME /config
 
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/bin/bash", "/entrypoint.sh", "/sishc.sh"]
+CMD ["/bin/bash", "/entrypoint.sh"]

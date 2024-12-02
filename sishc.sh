@@ -28,7 +28,7 @@ verify_files() {
   if [[ ! -s "$CONFIG_FILE" ]]; then
     colored_echo "31" "ERROR: Configuration file is empty. Please edit it at $CONFIG_FILE" | output_handler
     touch "$CONFIG_FILE"
-    exit 1
+    # exit 1
   fi
 }
 
@@ -37,6 +37,7 @@ declare -A previous_configs
 
 # Function to handle output
 output_handler() {
+  truncate_logs # Check if we need to truncate the log
   while read -r line; do
     echo -e "$(date +'%Y-%m-%d %H:%M:%S') - $line" >>"$OUTPUT_LOG"
     echo -e "$(date +'%Y-%m-%d %H:%M:%S') - $line"
@@ -257,6 +258,16 @@ watch_config() {
       load_tunnels
     fi
   done
+}
+
+# Function to truncate log file when it exceeds a limit
+truncate_logs() {
+  local max_size=26214400 # 25 MB
+  if [[ -f "$OUTPUT_LOG" && $(stat -c%s "$OUTPUT_LOG") -ge $max_size ]]; then
+    tail -n 1000 "$OUTPUT_LOG" >"${OUTPUT_LOG}.tmp"
+    mv "${OUTPUT_LOG}.tmp" "$OUTPUT_LOG"
+    colored_echo "33" "INFO: Log file exceeded $((max_size / 1024 / 1024)) MB. Truncated to the last 1000 lines." | output_handler
+  fi
 }
 
 # Main function

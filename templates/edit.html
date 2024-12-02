@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <title>Edit Tunnel - {{ tunnel.name }}</title>
+  </head>
+  <body class="theme-light">
+    <section class="section">
+      <div class="container">
+        <h1 class="title">Edit Tunnel - {{ tunnel.name }}</h1>
+        <form method="post">
+          <div class="field">
+            <label class="label">Name</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="name"
+                value="{{ tunnel.name }}"
+                required
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">SSH Key</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="ssh_key"
+                placeholder="{{ global_config.ssh_key }}"
+                value="{{ tunnel.ssh_key }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Local Protocol</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="local_protocol"
+                placeholder="{{ global_config.local_protocol }}"
+                value="{{ tunnel.local_protocol }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Local Host</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="local_host"
+                placeholder="{{ global_config.local_host }}"
+                value="{{ tunnel.local_host }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Local Port</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="local_port"
+                placeholder="{{ global_config.local_port }}"
+                value="{{ tunnel.local_port }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Remote Port</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="remote_port"
+                placeholder="{{ global_config.remote_port }}"
+                value="{{ tunnel.remote_port }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Remote Server</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="remote_server"
+                placeholder="{{ global_config.remote_server }}"
+                value="{{ tunnel.remote_server }}"
+                onfocus="this.placeholder = '';"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <div class="control">
+              <button type="submit" class="button is-primary">
+                Save Changes
+              </button>
+              <a href="{{ url_for('index') }}" class="button is-link"
+                >Back to Tunnels</a
+              >
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+    <script>
+      document.body.classList.toggle(
+        "theme-dark",
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      );
+    </script>
+  </body>
+</html>

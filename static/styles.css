@@ -1,0 +1,100 @@
+body.theme-light {
+  background-color: #ecdfcc; /* Light theme background */
+  color: #181c14;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+body.theme-dark {
+  background-color: #181c14; /* Dark theme background */
+  color: #ecdfcc;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+button {
+  margin: 0 5px;
+}
+
+.global-config-value {
+  color: #697565; /* Highlight for global configuration values */
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.global-config-value::after {
+  content: "This value is from the global configuration";
+  position: absolute;
+  top: -1.5em;
+  left: 0;
+  background-color: #3c3d37;
+  color: #ecdfcc;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  transition:
+    opacity 0.2s ease-in-out,
+    visibility 0.2s ease-in-out;
+}
+
+.global-config-value:hover::after {
+  visibility: visible;
+  opacity: 1;
+}
+
+input.theme-light {
+  background-color: #ffffff; /* Light theme input background */
+  color: #181c14;
+  border: 1px solid #697565;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+input.theme-dark {
+  background-color: #3c3d37; /* Dark theme input background */
+  color: #ecdfcc;
+  border: 1px solid #697565;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+input:focus {
+  border-color: #72421f;
+  outline: none;
+  box-shadow: 0 0 5px #72421f;
+}
+
+table.theme-light {
+  background-color: #ffffff; /* Light theme table background */
+  color: #181c14;
+  border: 1px solid #697565;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table.theme-dark {
+  background-color: #3c3d37; /* Dark theme table background */
+  color: #ecdfcc;
+  border: 1px solid #697565;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th,
+table td {
+  padding: 10px;
+  border: 1px solid #697565;
+}
+
+table.theme-light th,
+table.theme-light td {
+  background-color: #ecdfcc;
+}
+
+table.theme-dark th,
+table.theme-dark td {
+  background-color: #3c3d37;
+}

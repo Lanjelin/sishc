@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='styles.css') }}"
+    />
+    <title>SISHC Tunnel Manager</title>
+  </head>
+  <body class="theme-light">
+    <section class="section">
+      <div class="container">
+        <h1 class="title">SISHC Tunnel Manager</h1>
+        <a href="{{ url_for('config') }}" class="button is-primary"
+          >Edit Global Configuration</a
+        >
+        <a href="{{ url_for('add_tunnel') }}" class="button is-success"
+          >Add New Tunnel</a
+        >
+        <a href="{{ url_for('edit_raw') }}" class="button is-warning"
+          >Edit Raw Config</a
+        >
+        <table class="table is-fullwidth is-striped">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Local Host</th>
+              <th>Local Port</th>
+              <th>Remote Server</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tunnel in tunnels %}
+            <tr>
+              <td>
+                {% if tunnel.name == global_config.get('name') %}<span
+                  class="global-config-value"
+                  >{{ tunnel.name }}</span
+                >{% else %}{{ tunnel.name }}{% endif %}
+              </td>
+              <td>
+                {% if tunnel.local_host == global_config.get('local_host')
+                %}<span class="global-config-value"
+                  >{{ tunnel.local_host }}</span
+                >{% else %}{{ tunnel.local_host }}{% endif %}
+              </td>
+              <td>
+                {% if tunnel.local_port == global_config.get('local_port')
+                %}<span class="global-config-value"
+                  >{{ tunnel.local_port }}</span
+                >{% else %}{{ tunnel.local_port }}{% endif %}
+              </td>
+              <td>
+                {% if tunnel.remote_server == global_config.get('remote_server')
+                %}<span class="global-config-value"
+                  >{{ tunnel.remote_server }}</span
+                >{% else %}{{ tunnel.remote_server }}{% endif %}
+              </td>
+              <td>
+                <a
+                  href="{{ url_for('edit_tunnel', tunnel_name=tunnel.name) }}"
+                  class="button is-small is-info"
+                  >Edit Tunnel</a
+                >
+                <form
+                  action="{{ url_for('delete_tunnel', tunnel_name=tunnel.name) }}"
+                  method="post"
+                  style="display: inline"
+                >
+                  <button type="submit" class="button is-small is-danger">
+                    Delete Tunnel
+                  </button>
+                </form>
+                <a
+                  href="{{ url_for('view_logs', tunnel_name=tunnel.name) }}"
+                  class="button is-small is-primary"
+                  >View Logs</a
+                >
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <script>
+      document.body.classList.toggle(
+        "theme-dark",
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      );
+    </script>
+  </body>
+</html>

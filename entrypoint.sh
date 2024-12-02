@@ -5,7 +5,11 @@ if ! [[ "$PUID" == 0 && "$PGID" == 0 ]]; then
   usermod -u "$PUID" abc >/dev/null
   groupmod -g "$PGID" abc >/dev/null
 
-  exec su-exec abc "$@"
+  find / -maxdepth 1 ! -name '.*' -exec chown abc:abc {} + >/dev/null 2>&1
+
+  su-exec abc python3 /web.py >/dev/null 2>&1 &
+  su-exec abc /sishc.sh
 else
-  exec "$@"
+  python3 /web.py >/dev/null 2>&1 &
+  /sishc.sh
 fi
