@@ -19,6 +19,16 @@
         <h1 class="title">Add New Tunnel</h1>
         <form method="post">
           <div class="field">
+            <div class="control">
+              <a href="{{ url_for('index') }}" class="button is-link ml-0"
+                >Back to Tunnels</a
+              >
+              <button type="submit" class="button is-primary">
+                Save Changes
+              </button>
+            </div>
+          </div>
+          <div class="field">
             <label class="label">Name</label>
             <div class="control">
               <input class="input" type="text" name="name" required />
@@ -94,16 +104,6 @@
                 placeholder="{{ global_config.remote_server }}"
                 onfocus="this.placeholder = '';"
               />
-            </div>
-          </div>
-          <div class="field">
-            <div class="control">
-              <button type="submit" class="button is-primary">
-                Save Changes
-              </button>
-              <a href="{{ url_for('index') }}" class="button is-link"
-                >Back to Tunnels</a
-              >
             </div>
           </div>
         </form>

@@ -30,20 +30,20 @@
         <form method="post">
           <div class="field">
             <div class="control">
-              <textarea id="editor" name="raw_content">
-{{ raw_content }}</textarea
+              <a href="{{ url_for('index') }}" class="button is-link ml-0"
+                >Back to Tunnels</a
               >
-              <input type="hidden" name="raw_content" id="raw-content-hidden" />
+              <button type="submit" class="button is-primary">
+                Save Changes
+              </button>
             </div>
           </div>
           <div class="field">
             <div class="control">
-              <button type="submit" class="button is-primary">
-                Save Changes
-              </button>
-              <a href="{{ url_for('index') }}" class="button is-link"
-                >Back to Tunnels</a
+              <textarea id="editor" name="raw_content">
+{{ raw_content }}</textarea
               >
+              <input type="hidden" name="raw_content" id="raw-content-hidden" />
             </div>
           </div>
         </form>

@@ -19,6 +19,16 @@
         <h1 class="title">Edit Global Configuration</h1>
         <form method="post">
           <div class="field">
+            <div class="control">
+              <a href="{{ url_for('index') }}" class="button is-link ml-0"
+                >Back to Tunnels</a
+              >
+              <button type="submit" class="button is-primary">
+                Save Changes
+              </button>
+            </div>
+          </div>
+          <div class="field">
             <label class="label">SSH Key</label>
             <div class="control">
               <input
@@ -82,16 +92,6 @@
                 name="remote_server"
                 value="{{ config.remote_server }}"
               />
-            </div>
-          </div>
-          <div class="field">
-            <div class="control">
-              <button type="submit" class="button is-primary">
-                Save Changes
-              </button>
-              <a href="{{ url_for('index') }}" class="button is-link"
-                >Back to Tunnels</a
-              >
             </div>
           </div>
         </form>
