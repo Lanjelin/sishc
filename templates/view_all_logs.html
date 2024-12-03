@@ -17,12 +17,16 @@
     <section class="section">
       <div class="container">
         <h1 class="title">Last 100 Log Entries</h1>
-        <a href="{{ url_for('index') }}" class="button is-link"
-          >Back to Tunnels</a
-        >
-        <pre class="box" id="log-output">
+        <div class="field">
+          <a href="{{ url_for('index') }}" class="button is-link"
+            >Back to Tunnels</a
+          >
+        </div>
+        <div class="field">
+          <pre class="box" id="log-output">
 {% for log in logs[-100:][::-1] %}{{ log }}{% endfor %}</pre
-        >
+          >
+        </div>
       </div>
     </section>
     <script>
