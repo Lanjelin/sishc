@@ -17,11 +17,11 @@
     <section class="section">
       <div class="container">
         <h1 class="title">Logs for Tunnel - {{ tunnel_name }}</h1>
-        <pre class="box">
-{% for log in logs[-100][::-1] %}{{ log }}{% endfor %}</pre
-        >
         <a href="{{ url_for('index') }}" class="button is-link"
           >Back to Tunnels</a
+        >
+        <pre class="box">
+{% for log in logs[-100:][::-1] %}{{ log }}{% endfor %}</pre
         >
       </div>
     </section>
