@@ -11,18 +11,19 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='styles.css') }}"
     />
-    <title>View Logs</title>
+    <title>View All Logs</title>
   </head>
   <body class="theme-light">
     <section class="section">
       <div class="container">
-        <h1 class="title">Logs for Tunnel - {{ tunnel_name }}</h1>
-        <pre class="box">
-{% for log in logs[-100][::-1] %}{{ log }}{% endfor %}</pre
+        <h1 class="title">Last 100 Log Entries</h1>
+        <pre class="box" id="log-output">
+{% for log in logs[-100:][::-1] %}{{ log }}{% endfor %}</pre
         >
         <a href="{{ url_for('index') }}" class="button is-link"
           >Back to Tunnels</a
         >
+        <button class="button is-primary" id="tail-logs">Tail Logs</button>
       </div>
     </section>
     <script>

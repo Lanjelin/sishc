@@ -155,5 +155,12 @@ def edit_raw():
     return render_template("edit_raw.html", raw_content=raw_content)
 
 
+@app.route("/view_all_logs")
+def view_all_logs():
+    logs = get_logs()
+    stripped_logs = [strip_ansi_codes(log) for log in logs]
+    return render_template("view_all_logs.html", logs=stripped_logs)
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)
