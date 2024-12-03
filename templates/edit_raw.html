@@ -11,6 +11,16 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='styles.css') }}"
     />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/yaml/yaml.min.js"></script>
     <title>Edit Raw Config</title>
   </head>
   <body class="theme-light">
@@ -20,9 +30,10 @@
         <form method="post">
           <div class="field">
             <div class="control">
-              <textarea class="textarea" name="raw_content" rows="20">
+              <textarea id="editor" name="raw_content">
 {{ raw_content }}</textarea
               >
+              <input type="hidden" name="raw_content" id="raw-content-hidden" />
             </div>
           </div>
           <div class="field">
@@ -43,6 +54,24 @@
         "theme-dark",
         window.matchMedia("(prefers-color-scheme: dark)").matches,
       );
+      const editor = CodeMirror.fromTextArea(
+        document.getElementById("editor"),
+        {
+          lineNumbers: true,
+          mode: "yaml",
+          theme: "material",
+          tabSize: 2,
+        },
+      );
+
+      // Sync content with hidden input for form submission
+      const hiddenInput = document.getElementById("raw-content-hidden");
+      editor.on("change", () => {
+        hiddenInput.value = editor.getValue();
+      });
+
+      // Initialize the hidden input
+      hiddenInput.value = editor.getValue();
     </script>
   </body>
 </html>
