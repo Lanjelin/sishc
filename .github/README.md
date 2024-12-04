@@ -1,76 +1,58 @@
-# sishc.sh
+# SISHC Tunnel Manager
 
-`sishc.sh` is a Bash script designed to manage [sish](https://docs.ssi.sh/getting-started) tunnels based on configurations specified in a YAML file. It provides features such as automatic tunnel management, logging, and configuration monitoring.
+SISHC Tunnel Manager is a lightweight, web app for managing [sish tunnels](https://docs.ssi.sh/).
+The app enables you to add, edit, delete, and monitor SSH tunnels conveniently through a user-friendly interface.
+The project is built using Flask, Bulma, and Codemirror.
+
+<div align="center">
+  <a href="https://imgur.com/k4VWmn7">
+    <img src="https://raw.githubusercontent.com/Lanjelin/sishc/refs/heads/main/.github/sishc.png" title="screenshot" width="450" />
+  </a>
+</div>
 
 ## Features
 
-- **Automatic Tunnel Management**: Start and stop SSH tunnels based on configurations defined in a YAML file.
-- **Configuration Monitoring**: Automatically reload tunnels when the configuration file changes.
-- **Logging**: Log output to a specified log file with timestamps.
-- **Input Validation**: Ensure that all required parameters are provided and valid before starting tunnels.
-- **Colorized Output**: Optionally display colored output in the terminal for better visibility.
+- **Add New Tunnels**: Create SSH tunnels with configurable local and remote settings.
+- **Edit Configurations**: Update global and individual tunnel configurations via a streamlined interface.
+- **Manage Tunnels**: Edit raw configurations directly or delete tunnels when no longer needed.
+- **View Logs**: Access logs for individual tunnels or view aggregated logs.
+- **CLI update supported**: Tunnels with be updated when a change is detected in the config-file.
 
-## Prerequisites
-
-Before using `sishc.sh`, ensure you have the following installed:
-
-- [Bash](https://www.gnu.org/software/bash/)
-- [yq](https://github.com/mikefarah/yq) - A command-line YAML processor.
-- [autossh](https://github.com/haifux/autossh) - A tool to automatically restart SSH sessions.
-
-## Installation
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/Lanjelin/sishc.git
-   cd sishc
-   ```
-
-2. Make the script executable:
-
-   ```bash
-   chmod +x sishc.sh
-   ```
-
-3. (Optional) Move the script to a directory in your PATH for easier access:
-
-   ```bash
-   mv sishc.sh /usr/local/bin/sishc
-   ```
 ## Docker
 
-Create a config file at `./config/config.yaml` and edit it as specified below. Ensure that PUID and PGID is set as the same user that owns the config-file and the private key(s) used.
+Ensure that PUID and PGID is set as the same user that owns the config-dir and the private key(s) used.
+After starting the container, access the web ui at port 5000, eg. `http://127.0.0.1:5000`
 
 ### docker compose
 
 ```yaml
-  services:
-    sishc:
-      image: ghcr.io/lanjelin/sishc:latest
-      container_name: sishc
-      volumes:
-        - ./config:/config
-        - ~/.ssh:/config/.ssh:ro
-      environment:
-        - TZ=Europe/Oslo
-        - PUID=1000 # defaults to 1000
-        - PGID=1000 # defaults to 1000
-  #      - USE_COLOR=false # toggle color in logs
-  #      - SISHC_OUTPUT_LOG="/config/sishc.log" # enable logging to file
-      restart: on-failure:10
+services:
+  sishc:
+    image: ghcr.io/lanjelin/sishc:latest
+    container_name: sishc
+    volumes:
+      - ./config:/config
+      - ~/.ssh:/config/.ssh:ro
+    environment:
+      - TZ=Europe/Oslo
+      - PUID=1000 # defaults to 1000
+      - PGID=1000 # defaults to 1000
+    #      - USE_COLOR=false # toggle color in logs
+    #      - SISHC_OUTPUT_LOG="/config/sishc.log" # change log path
+    ports:
+      - 5000:5000
+    restart: on-failure:10
 ```
 
 ### docker cli
 
 ```bash
-docker run --name sishc --rm -d -v ./config:/config -v ~/.ssh:/config/.ssh:ro -e TZ=Europe/Oslo -e PUID=${UID} -e PGID=${GID} ghcr.io/lanjelin/sishc:latest
+docker run --name sishc --rm -d -v ./config:/config -v ~/.ssh:/config/.ssh:ro -e TZ=Europe/Oslo -e PUID=${UID} -e PGID=${GID} -p 5000:5000 ghcr.io/lanjelin/sishc:latest
 ```
-
 
 ## Configuration
 
-Create a configuration file at `~/.config/sishc/config.yaml` with the following structure:
+The configuration file at `~/.config/sishc/config.yaml` should have the following structure:
 
 ```yaml
 # Global Configuration
@@ -103,7 +85,42 @@ tunnels:
 - `remote_server`: Hostname or IP address of the remote server.
 - `tunnels`: A list of tunnel configurations, each with a unique `name`.
 
-## Usage
+## How do I configure sish for this?
+
+I've attached an example as how I run sish in `sish-example-compose.yaml`, for full instructions, see the [docs](https://docs.ssi.sh/getting-started#docker-compose).
+
+## Running outside Docker
+
+Before using `sishc.sh`, ensure you have the following installed:
+
+- [Bash](https://www.gnu.org/software/bash/)
+- [yq](https://github.com/mikefarah/yq) - A command-line YAML processor.
+- [autossh](https://github.com/haifux/autossh) - A tool to automatically restart SSH sessions.
+
+Requirements for `web.py` is listed in `requiments.txt`, if you want to use the web frontend.
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/Lanjelin/sishc.git
+   cd sishc
+   ```
+
+2. Make the script executable:
+
+   ```bash
+   chmod +x sishc.sh
+   ```
+
+3. (Optional) Move the script to a directory in your PATH for easier access:
+
+   ```bash
+   mv sishc.sh /usr/local/bin/sishc
+   ```
+
+### Usage
 
 Run the script to start managing your sish tunnels:
 
@@ -113,11 +130,11 @@ Run the script to start managing your sish tunnels:
 
 You can also run it in the background or as a service to keep your tunnels active.
 
-## Logging
+### Logging
 
 Logs are written to `~/.local/share/sishc/sishc.log` by default. You can change the log file location by setting the `SISHC_OUTPUT_LOG` environment variable.
 
-## Color Output
+### Color Output
 
 By default, the script uses colored output. You can disable this by running the script with the `--no-color` flag:
 
@@ -148,4 +165,3 @@ This README was mostly written by GPT-4o
     <img src="https://user-images.githubusercontent.com/74038190/216644507-4f06ea29-bf55-4356-aac0-d42751461a9d.gif" title="source: imgur.com" width="150" />
   </a>
 </div>
-
