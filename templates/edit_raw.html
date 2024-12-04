@@ -1,108 +1,56 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='styles.css') }}"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material.min.css"
-    />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/yaml/yaml.min.js"></script>
-    <!-- Favicons -->
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="{{ url_for('static', filename='images/tunnel-32.png') }}"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="{{ url_for('static', filename='images/tunnel-16.png') }}"
-    />
-    <link
-      rel="apple-touch-icon"
-      href="{{ url_for('static', filename='images/tunnel.png') }}"
-    />
-    <link
-      rel="manifest"
-      href="{{ url_for('static', filename='manifest.json') }}"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      href="{{ url_for('static', filename='images/tunnel.png') }}"
-    />
-    <style>
-      .CodeMirror {
-        height: auto;
-      }
-    </style>
-    <title>Edit Raw Config</title>
-  </head>
-  <body class="theme-light">
-    <section class="section">
-      <div class="container">
-        <h1 class="title">Edit Raw Config</h1>
-        <form method="post">
-          <div class="field">
-            <div class="control">
-              <a href="{{ url_for('index') }}" class="button is-link ml-0"
-                >Back to Tunnels</a
-              >
-              <button type="submit" class="button is-primary">
-                Save Changes
-              </button>
-            </div>
-          </div>
-          <div class="field">
-            <div class="control">
-              <textarea id="editor" name="raw_content">
-{{ raw_content }}</textarea
-              >
-              <input type="hidden" name="raw_content" id="raw-content-hidden" />
-            </div>
-          </div>
-        </form>
+{% extends "base.html" %} {% block head %}
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/theme/material.min.css"
+/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/yaml/yaml.min.js"></script>
+<style>
+  .CodeMirror {
+    height: auto;
+  }
+</style>
+{% endblock %} {% block title%}Edit Raw Config{% endblock %} {% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">Edit Raw Config</h1>
+    <form method="post">
+      <div class="field">
+        <div class="control">
+          <a href="{{ url_for('index') }}" class="button is-link ml-0"
+            >Back to Tunnels</a
+          >
+          <button type="submit" class="button is-primary">Save Changes</button>
+        </div>
       </div>
-    </section>
-    <script>
-      document.body.classList.toggle(
-        "theme-dark",
-        window.matchMedia("(prefers-color-scheme: dark)").matches,
-      );
-      const editor = CodeMirror.fromTextArea(
-        document.getElementById("editor"),
-        {
-          lineNumbers: true,
-          mode: "yaml",
-          theme: "material",
-          tabSize: 2,
-        },
-      );
+      <div class="field">
+        <div class="control">
+          <textarea id="editor" name="raw_content">{{ raw_content }}</textarea>
+          <input type="hidden" name="raw_content" id="raw-content-hidden" />
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+<script>
+  const editor = CodeMirror.fromTextArea(document.getElementById("editor"), {
+    lineNumbers: true,
+    mode: "yaml",
+    theme: "material",
+    tabSize: 2,
+  });
 
-      // Sync content with hidden input for form submission
-      const hiddenInput = document.getElementById("raw-content-hidden");
-      editor.on("change", () => {
-        hiddenInput.value = editor.getValue();
-      });
+  // Sync content with hidden input for form submission
+  const hiddenInput = document.getElementById("raw-content-hidden");
+  editor.on("change", () => {
+    hiddenInput.value = editor.getValue();
+  });
 
-      // Initialize the hidden input
-      hiddenInput.value = editor.getValue();
-    </script>
-  </body>
-</html>
+  // Initialize the hidden input
+  hiddenInput.value = editor.getValue();
+</script>
+{% endblock %}

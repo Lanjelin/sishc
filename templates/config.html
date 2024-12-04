@@ -1,133 +1,84 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
-    />
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='styles.css') }}"
-    />
-    <!-- Favicons -->
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="{{ url_for('static', filename='images/tunnel-32.png') }}"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="{{ url_for('static', filename='images/tunnel-16.png') }}"
-    />
-    <link
-      rel="apple-touch-icon"
-      href="{{ url_for('static', filename='images/tunnel.png') }}"
-    />
-    <link
-      rel="manifest"
-      href="{{ url_for('static', filename='manifest.json') }}"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      href="{{ url_for('static', filename='images/tunnel.png') }}"
-    />
-    <title>Edit Global Configuration</title>
-  </head>
-  <body class="theme-light">
-    <section class="section">
-      <div class="container">
-        <h1 class="title">Edit Global Configuration</h1>
-        <form method="post">
-          <div class="field">
-            <div class="control">
-              <a href="{{ url_for('index') }}" class="button is-link ml-0"
-                >Back to Tunnels</a
-              >
-              <button type="submit" class="button is-primary">
-                Save Changes
-              </button>
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">SSH Key</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="ssh_key"
-                value="{{ config.ssh_key }}"
-              />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Local Protocol</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="local_protocol"
-                value="{{ config.local_protocol }}"
-              />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Local Host</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="local_host"
-                value="{{ config.local_host }}"
-              />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Local Port</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="local_port"
-                value="{{ config.local_port }}"
-              />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Remote Port</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="remote_port"
-                value="{{ config.remote_port }}"
-              />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Remote Server</label>
-            <div class="control">
-              <input
-                class="input"
-                type="text"
-                name="remote_server"
-                value="{{ config.remote_server }}"
-              />
-            </div>
-          </div>
-        </form>
+{% extends "base.html" %} {% block head %} {% endblock %} {% block title%}Edit
+Global Configuration{% endblock %} {% block body %}
+<section class="section">
+  <div class="container">
+    <h1 class="title">Edit Global Configuration</h1>
+    <form method="post">
+      <div class="field">
+        <div class="control">
+          <a href="{{ url_for('index') }}" class="button is-link ml-0"
+            >Back to Tunnels</a
+          >
+          <button type="submit" class="button is-primary">Save Changes</button>
+        </div>
       </div>
-    </section>
-    <script>
-      document.body.classList.toggle(
-        "theme-dark",
-        window.matchMedia("(prefers-color-scheme: dark)").matches,
-      );
-    </script>
-  </body>
-</html>
+      <div class="field">
+        <label class="label">SSH Key</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="ssh_key"
+            value="{{ config.ssh_key }}"
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Local Protocol</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="local_protocol"
+            value="{{ config.local_protocol }}"
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Local Host</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="local_host"
+            value="{{ config.local_host }}"
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Local Port</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="local_port"
+            value="{{ config.local_port }}"
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Remote Port</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="remote_port"
+            value="{{ config.remote_port }}"
+          />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Remote Server</label>
+        <div class="control">
+          <input
+            class="input"
+            type="text"
+            name="remote_server"
+            value="{{ config.remote_server }}"
+          />
+        </div>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
