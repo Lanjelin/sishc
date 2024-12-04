@@ -1,0 +1,41 @@
+services:
+  letsencrypt:
+    image: adferrand/dnsrobocert:latest
+    container_name: letsencrypt-dns
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./letsencrypt:/etc/letsencrypt
+      - ./le-config.yml:/etc/dnsrobocert/config.yml
+    restart: always
+  sish:
+    image: antoniomika/sish:latest
+    container_name: sish
+    depends_on:
+      - letsencrypt
+    volumes:
+      - ./letsencrypt:/etc/letsencrypt
+      - ./pubkeys:/pubkeys
+      - ./keys:/keys
+      - ./ssl:/ssl
+      - ./log:/tmp
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    command: |
+      --ssh-address=:2222
+      --http-address=:80
+      --https-address=:443
+      --https=true
+      --https-certificate-directory=/ssl
+      --authentication-keys-directory=/pubkeys
+      --private-keys-directory=/keys
+      --bind-random-ports=false
+      --bind-random-subdomains=false
+      --authentication-password=""
+      --log-to-file=true
+      --bind-any-host=true
+      --domain=example.com
+      --verify-dns=false
+      --verify-ssl=false
+      --log-to-client=true
+    network_mode: host
+    restart: always

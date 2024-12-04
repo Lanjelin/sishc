@@ -87,7 +87,7 @@ tunnels:
 
 ## How do I configure sish for this?
 
-I've attached an example as how I run sish in `sish-example-compose.yaml`, for full instructions, see the [docs](https://docs.ssi.sh/getting-started#docker-compose).
+I've attached an example as how I run sish in `docker-compose-sish-example.yaml`, for full instructions, see the [docs](https://docs.ssi.sh/getting-started#docker-compose).
 
 ## Running outside Docker
 

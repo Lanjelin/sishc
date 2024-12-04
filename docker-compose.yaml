@@ -9,6 +9,8 @@ services:
       - TZ=Europe/Oslo
       - PUID=1000 # defaults to 1000
       - PGID=1000 # defaults to 1000
-#      - USE_COLOR=false # toggle color in logs
-#      - SISHC_OUTPUT_LOG="/config/sishc.log" # enable logging to file
+    #  - USE_COLOR=false # toggle color in logs
+    #  - SISHC_OUTPUT_LOG="/config/sishc.log" # change log path
+    ports:
+      - 5000:5000
     restart: on-failure:10
