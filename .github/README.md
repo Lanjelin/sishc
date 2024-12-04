@@ -5,7 +5,7 @@ The app enables you to add, edit, delete, and monitor SSH tunnels conveniently t
 The project is built using Flask, Bulma, and Codemirror.
 
 <div align="center">
-  <a href="https://imgur.com/k4VWmn7">
+  <a href="https://github.com/Lanjelin/sishc/blob/main/.github/sishc.png">
     <img src="https://raw.githubusercontent.com/Lanjelin/sishc/refs/heads/main/.github/sishc.png" title="screenshot" width="450" />
   </a>
 </div>
