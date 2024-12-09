@@ -2,7 +2,7 @@
 Logs{% endblock %} {% block body %}
 <section class="section">
   <div class="container">
-    <h1 class="title">Logs for Tunnel - {{ tunnel_name }}</h1>
+    <h1 class="title">Last 250 Log Entries for Tunnel - {{ tunnel_name }}</h1>
     <div class="field">
       <a href="{{ url_for('index') }}" class="button is-link"
         >Back to Tunnels</a
@@ -10,7 +10,7 @@ Logs{% endblock %} {% block body %}
     </div>
     <div class="field">
       <pre class="box">
-{% for log in logs[-100:][::-1] %}{{ log }}{% endfor %}</pre
+{% for log in logs[-250:][::-1] %}{{ log }}{% endfor %}</pre
       >
     </div>
   </div>
