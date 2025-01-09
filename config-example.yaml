@@ -1,18 +1,19 @@
-  # Global Configuration
-  ssh_key: "~/.ssh/id_rsa"
-  local_protocol: "http"
-  local_host: "localhost"
-  local_port: 8080
-  remote_port: 2222
-  remote_server: "example.com"
-  # Tunnel Specific Configurations
-  tunnels:
-    - name: "first_tunnel"
-      local_protocol: "http"
-      local_host: "localhost"
-      local_port: 8080
-      remote_port: 2222
-      remote_server: "example.com"
-    - name: "second_tunnel"
-      local_protocol: "https"
-      local_port: 4433
+# Global Configuration
+ssh_key: "~/.ssh/id_rsa"
+local_protocol: "http"
+local_host: "localhost"
+local_port: 8080
+remote_port: 2222
+remote_server: "example.com"
+# Tunnel Specific Configurations
+tunnels:
+  - name: "first_tunnel"
+    local_protocol: "http"
+    local_host: "localhost"
+    local_port: 8080
+    remote_port: 2222
+    remote_server: "example.com"
+  - name: "second_tunnel"
+    local_protocol: "https"
+    local_port: 4433
+    disabled: True

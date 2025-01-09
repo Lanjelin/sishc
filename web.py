@@ -82,6 +82,21 @@ def index():
     return render_template("index.html", tunnels=tunnels, global_config=global_config)
 
 
+@app.route("/toggle/<string:tunnel_name>", methods=["POST"])
+def toggle_tunnel(tunnel_name):
+    tunnels = load_tunnels()
+    for tunnel in tunnels:
+        if tunnel["name"] == tunnel_name:
+            # Toggle the 'disabled' state, set to empty string if false (to remove the key)
+            if tunnel.get("disabled", False):
+                tunnel["disabled"] = ""  # Set to an empty string when False
+            else:
+                tunnel["disabled"] = True  # Set to True when enabled
+            save_tunnels(tunnels)
+            break
+    return redirect(url_for("index"))
+
+
 @app.route("/edit/<string:tunnel_name>", methods=["GET", "POST"])
 def edit_tunnel(tunnel_name):
     tunnels = load_tunnels()

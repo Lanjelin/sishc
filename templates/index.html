@@ -56,6 +56,17 @@
               >{% else %}{{ tunnel.remote_server }}{% endif %}
             </td>
             <td>
+              <form
+                action="{{ url_for('toggle_tunnel', tunnel_name=tunnel.name) }}"
+                method="POST"
+                style="display:inline;">
+                <button
+                  type="submit"
+                  class="button is-small {{ 'is-danger' if tunnel.disabled else 'is-success' }}"
+                >
+                  {{ 'Enable' if tunnel.disabled else 'Disable' }}
+                </button>
+              </form>
               <a
                 href="{{ url_for('edit_tunnel', tunnel_name=tunnel.name) }}"
                 class="button is-small is-info"
@@ -64,7 +75,7 @@
               <form
                 action="{{ url_for('delete_tunnel', tunnel_name=tunnel.name) }}"
                 method="post"
-                style="display: inline"
+                style="display:inline;"
               >
                 <button
                   type="submit"

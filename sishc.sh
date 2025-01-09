@@ -206,10 +206,21 @@ load_tunnels() {
     local_port=$(echo "$tunnel" | yq eval '.local_port // '\"$config_local_port\"'' -)
     remote_port=$(echo "$tunnel" | yq eval '.remote_port // '\"$config_remote_port\"'' -)
     remote_server=$(echo "$tunnel" | yq eval '.remote_server // '\"$config_remote_server\"'' -)
+    tunnel_disabled=$(echo "$tunnel" | yq eval '.disabled // "false"')
 
     # Create a unique identifier for the tunnel configuration
     current_config=$(echo "$ssh_key:$local_proto:$local_host:$local_port:$remote_port:$remote_server")
     defined_tunnels["$name"]=1
+
+    # Check if the tunnel is disabled
+    if [[ "$tunnel_disabled" == true || "${tunnel_disabled,,}" == "true" ]]; then
+      # Stop it if it's running
+      if [[ -n "${running_tunnels[$name]}" ]]; then
+        stop_tunnel "$name"
+      fi
+      continue
+      echo "Continue"
+    fi
 
     # Check if the tunnel is already running and if the configuration has changed
     if [[ -n "${running_tunnels[$name]}" ]]; then

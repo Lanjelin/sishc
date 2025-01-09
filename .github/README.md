@@ -73,6 +73,7 @@ tunnels:
   - name: "second_tunnel"
     local_protocol: "https"
     local_port: 4433
+    disabled: True
 ```
 
 ### Configuration Parameters
