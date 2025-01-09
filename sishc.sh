@@ -116,19 +116,18 @@ start_tunnel() {
   echo "INFO: Starting tunnel: $name -> $local_proto"://$local_host:$local_port | output_handler
 
   # Specify the protocol according to sish docs
+  # Default to http - TCP Alias not supported
   if [[ "$local_proto" == "https" ]]; then
-    local_proto=443
+    local_proto="443:"
   elif [[ "$local_proto" == "tcp" ]]; then
-    # Might not be able to get this to work, defaulting to http for now
-    # local_proto=$local_port
-    local_proto=80
+    local_proto=""
   else
-    local_proto=80
+    local_proto="80:"
   fi
 
   {
     AUTOSSH_POLL=10 AUTOSSH_GATETIME=5 autossh -M 0 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no \
-      -T -i "$ssh_key" -p "$remote_port" -R "$name:$local_proto:$local_host:$local_port" "$remote_server" \
+      -T -i "$ssh_key" -p "$remote_port" -R "$name:$local_proto$local_host:$local_port" "$remote_server" \
       2>&1 | while read -r line; do
       if ! [[ -n $(echo "$line" | grep "Press Ctrl-C") ||
       -n $(echo "$line" | grep '^[[:space:]]*$') ||
@@ -137,6 +136,8 @@ start_tunnel() {
         if [[ -n $(echo "$line" | grep ": https://$name") ]]; then
           url=$(echo "$line" | grep -o 'http[s]\?://[^ ]\+') #P '(?<=https://).*')
           echo "$(colored_echo '32' 'INFO: Tunnel '$name' started successfully. Access it at') $(colored_echo '34' ''$url'')" | output_handler
+        elif [[ -n $(echo "$line" | grep ": $(echo "$remote_server" | sed -E 's/.*\.([a-zA-Z0-9-]+\.[a-zA-Z]{2,})$/\1/'):$name") ]]; then
+          echo "$(colored_echo '32' 'INFO: TCP Tunnel '$name' started successfully. Access it at') $(colored_echo '34' ''$remote_server:$name'')" | output_handler
         else
           if [[ -n $(echo "$line" | sed -r 's/\x1B\[[0-9;]*m//g' | grep -E "\| ($name+(\.[a-zA-Z0-9-]+)*) \| [1-5][0-9][0-9] \|") ]]; then
             echo "$line" | sed -E 's/^[0-9]{4}\/[0-9]{2}\/[0-9]{2} - [0-9]{2}:[0-9]{2}:[0-9]{2} \| /LOG: /' | output_handler

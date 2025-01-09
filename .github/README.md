@@ -74,6 +74,10 @@ tunnels:
     local_protocol: "https"
     local_port: 4433
     disabled: True
+  - name: "2512" # Expose ssh port to example.com:2512
+    local_host: 192.168.1.101
+    local_port: 22
+    local_protocol: tcp
 ```
 
 ### Configuration Parameters
