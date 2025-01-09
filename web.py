@@ -124,7 +124,7 @@ def delete_tunnel(tunnel_name):
 @app.route("/logs/<string:tunnel_name>")
 def view_logs(tunnel_name):
     logs = get_logs()
-    stripped_logs = [strip_ansi_codes(log) for log in logs if tunnel_name in log]
+    stripped_logs = [strip_ansi_codes(log) for log in logs if f": {tunnel_name}" in log]
     return render_template("logs.html", logs=stripped_logs, tunnel_name=tunnel_name)
 
 
