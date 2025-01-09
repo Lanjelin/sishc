@@ -172,7 +172,7 @@ stop_tunnel() {
       kill -9 $(pgrep -f "autossh.*$name\:") 2>/dev/null
       kill -9 $(pgrep -f "/usr/bin/ssh.*$name\:") 2>/dev/null
     else
-      echo "INFO: $name Tunnel stopped" | output_handler
+      echo "INFO: $name: Tunnel stopped" | output_handler
     fi
 
     # Clean up the running_tunnels array
