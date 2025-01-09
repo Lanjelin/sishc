@@ -157,7 +157,7 @@ start_tunnel() {
 stop_tunnel() {
   local name="$1"
   if [[ -n "${running_tunnels[$name]}" ]]; then
-    echo "INFO: Stopping tunnel: $name" | output_handler
+    echo "INFO: $name: Stopping tunnel" | output_handler
 
     # Attempt to gracefully stop the tunnel
     kill $(pgrep -f "autossh.*$name\:") 2>/dev/null
@@ -172,7 +172,7 @@ stop_tunnel() {
       kill -9 $(pgrep -f "autossh.*$name\:") 2>/dev/null
       kill -9 $(pgrep -f "/usr/bin/ssh.*$name\:") 2>/dev/null
     else
-      echo "INFO: Tunnel stopped: $name" | output_handler
+      echo "INFO: $name Tunnel stopped" | output_handler
     fi
 
     # Clean up the running_tunnels array
@@ -226,7 +226,7 @@ load_tunnels() {
     # Check if the tunnel is already running and if the configuration has changed
     if [[ -n "${running_tunnels[$name]}" ]]; then
       if [[ "${previous_configs[$name]}" != "$current_config" ]]; then
-        echo "INFO: Configuration changed for tunnel: $name. Restarting..." | output_handler
+        echo "INFO: $name: Configuration changed for tunnel. Restarting..." | output_handler
         stop_tunnel "$name"
         start_tunnel "$name" "$ssh_key" "$local_proto" "$local_host" "$local_port" "$remote_port" "$remote_server"
       fi
