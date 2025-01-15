@@ -1,8 +1,8 @@
 # SISHC Tunnel Manager
 
-SISHC Tunnel Manager is a lightweight, web app for managing [sish tunnels](https://docs.ssi.sh/).
-The goal of this project is to have an interface to quickly expose any local http/https/tcp server to a domain on a remote VPS, with built-in certificates and http to https forwarding.  
-The app enables you to add, edit, delete, and monitor SSH tunnels conveniently through a user-friendly interface.
+SISHC Tunnel Manager is a lightweight, web app and bash script for managing [sish tunnels](https://docs.ssi.sh/).  
+The goal of this project is to quickly expose any local http/https/tcp server to a domain on a remote VPS, with built-in certificates and http to https handling.  
+The app enables you to add, edit, delete, and monitor SSH tunnels conveniently through a user-friendly interface, or just edit the config-file directly.  
 The project is built using Flask, Bulma, and Codemirror.
 
 <div align="center">
