@@ -1,8 +1,8 @@
 # SISHC Tunnel Manager
 
 SISHC Tunnel Manager is a lightweight, web app and bash script for managing [sish tunnels](https://docs.ssi.sh/).  
-The goal of this project is to quickly expose any local http/https/tcp server to a domain on a remote VPS, with built-in certificates and http to https handling.  
-The app enables you to add, edit, delete, and monitor SSH tunnels conveniently through a user-friendly interface, or just edit the config-file directly.  
+The goal of this app is to quickly expose any local http/https/tcp server to a domain on a remote VPS, with built-in certificates and http to https handling.  
+The app enables you to add, edit, delete, and monitor SSH tunnels conveniently through a user-friendly interface, or by editing the config-file directly.  
 The project is built using Flask, Bulma, and Codemirror.
 
 <div align="center">
@@ -84,12 +84,14 @@ tunnels:
 ### Configuration Parameters
 
 - `ssh_key`: Path to your SSH private key.
-- `local_protocol`: Protocol to use for the local service (e.g., `http`, `https`).
+- `local_protocol`: Protocol to use for the local service (`http`, `https` or `tcp`).
 - `local_host`: Hostname or IP address of the local service.
 - `local_port`: Port number of the local service.
 - `remote_port`: Port number on the remote server.
 - `remote_server`: Hostname or IP address of the remote server.
+- `disabled`: Quckly disable a tunnel without deleting it, by setting this to true.
 - `tunnels`: A list of tunnel configurations, each with a unique `name`.
+- `name`: The desired subdomain, or remote port when forwarding tcp.
 
 ## How do I configure sish for this?
 
