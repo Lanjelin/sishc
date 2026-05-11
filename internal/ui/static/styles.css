@@ -16,6 +16,18 @@ button {
   margin: 0 5px;
 }
 
+.toggle-button.toggle-enabled {
+  background-color: #48c774;
+  border-color: #48c774;
+  color: #ffffff;
+}
+
+.toggle-button.toggle-disabled {
+  background-color: #f14668;
+  border-color: #f14668;
+  color: #ffffff;
+}
+
 .global-config-value {
   color: #697565;
   font-style: italic;

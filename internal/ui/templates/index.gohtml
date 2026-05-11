@@ -25,7 +25,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const isDisabled = button.dataset.disabled === "true";
       const nextDisabled = !isDisabled;
       button.dataset.disabled = String(nextDisabled);
-      button.className = `button is-small ${nextDisabled ? "is-danger" : "is-success"} toggle-button`;
+      button.className = `button is-small toggle-button ${nextDisabled ? "toggle-disabled" : "toggle-enabled"}`;
       button.textContent = nextDisabled ? "Enable" : "Disable";
       button.disabled = true;
 
@@ -70,7 +70,13 @@ window.addEventListener("DOMContentLoaded", () => {
           {{range .Tunnels}}
           <tr>
             <td>{{.Name}}</td>
-            <td><span class="tag" data-status="{{.Name}}">{{with index $.Statuses .Name}}{{.State}}{{else}}unknown{{end}}</span></td>
+            <td>
+              {{with index $.Statuses .Name}}
+              <span class="tag {{if eq .State "running"}}is-success{{else if eq .State "disabled"}}is-warning{{else}}is-danger{{end}}" data-status="{{.Name}}">{{.State}}</span>
+              {{else}}
+              <span class="tag is-danger" data-status="{{.Name}}">unknown</span>
+              {{end}}
+            </td>
             <td>{{if not .LocalHost}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.LocalHost}}</span>{{else}}{{.LocalHost}}{{end}}</td>
             <td>{{if eq .LocalPort 0}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.LocalPort}}</span>{{else}}{{.LocalPort}}{{end}}</td>
             <td>{{if not .RemoteServer}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.RemoteServer}}</span>{{else}}{{.RemoteServer}}{{end}}</td>
@@ -78,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
               <form action="/toggle/{{.Name}}" method="POST" style="display:inline;" data-toggle-form>
                 <button
                   type="submit"
-                  class="button is-small {{if .Disabled}}is-danger{{else}}is-success{{end}} toggle-button"
+                  class="button is-small toggle-button {{if .Disabled}}toggle-disabled{{else}}toggle-enabled{{end}}"
                   data-toggle-button
                   data-disabled="{{if .Disabled}}true{{else}}false{{end}}"
                 >
