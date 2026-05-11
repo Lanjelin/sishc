@@ -1,0 +1,5 @@
+.cache/
+.codex
+.codex/
+data/
+*.log

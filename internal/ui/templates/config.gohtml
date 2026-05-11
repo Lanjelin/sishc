@@ -1,0 +1,22 @@
+{{define "head"}}{{end}}
+{{define "content"}}
+<section class="section">
+  <div class="container">
+    <h1 class="title">{{.Title}}</h1>
+    <form method="post" action="{{.Action}}">
+      <div class="field">
+        <div class="control">
+          <a href="{{.BackURL}}" class="button is-link ml-0">Back to Tunnels</a>
+          <button type="submit" class="button is-primary">{{.Button}}</button>
+        </div>
+      </div>
+      <div class="field"><label class="label">SSH Key</label><div class="control"><input class="input" type="text" name="ssh_key" value="{{.GlobalConfig.SSHKey}}" /></div></div>
+      <div class="field"><label class="label">Local Protocol</label><div class="control"><input class="input" type="text" name="local_protocol" value="{{.GlobalConfig.LocalProtocol}}" /></div></div>
+      <div class="field"><label class="label">Local Host</label><div class="control"><input class="input" type="text" name="local_host" value="{{.GlobalConfig.LocalHost}}" /></div></div>
+      <div class="field"><label class="label">Local Port</label><div class="control"><input class="input" type="text" name="local_port" value="{{.GlobalConfig.LocalPort}}" /></div></div>
+      <div class="field"><label class="label">Remote Port</label><div class="control"><input class="input" type="text" name="remote_port" value="{{.GlobalConfig.RemotePort}}" /></div></div>
+      <div class="field"><label class="label">Remote Server</label><div class="control"><input class="input" type="text" name="remote_server" value="{{.GlobalConfig.RemoteServer}}" /></div></div>
+    </form>
+  </div>
+</section>
+{{end}}

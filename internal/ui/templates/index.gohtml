@@ -1,0 +1,101 @@
+{{define "head"}}
+<script>
+async function refreshStatuses() {
+  const res = await fetch("/api/status");
+  const statuses = await res.json();
+  for (const status of statuses) {
+    const el = document.querySelector(`[data-status="${status.name}"]`);
+    if (!el) continue;
+    el.textContent = status.state;
+    el.className = `tag is-${status.state === "running" ? "success" : status.state === "disabled" ? "warning" : "danger"}`;
+  }
+}
+setInterval(refreshStatuses, 2000);
+
+window.addEventListener("DOMContentLoaded", () => {
+  for (const form of document.querySelectorAll("form[data-toggle-form]")) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = form.querySelector("button[data-toggle-button]");
+      if (!button) return;
+
+      const originalDisabled = button.dataset.disabled;
+      const originalText = button.textContent;
+      const originalClass = button.className;
+      const isDisabled = button.dataset.disabled === "true";
+      const nextDisabled = !isDisabled;
+      button.dataset.disabled = String(nextDisabled);
+      button.className = `button is-small ${nextDisabled ? "is-danger" : "is-success"} toggle-button`;
+      button.textContent = nextDisabled ? "Enable" : "Disable";
+      button.disabled = true;
+
+      try {
+        await fetch(form.action, { method: "POST" });
+      } catch (err) {
+        button.dataset.disabled = originalDisabled;
+        button.className = originalClass;
+        button.textContent = originalText;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+});
+</script>
+{{end}}
+
+{{define "content"}}
+<section class="section">
+  <div class="container">
+    <h1 class="title">SISHC Tunnel Manager</h1>
+    <div class="field">
+      <a href="/add" class="button is-success">Add New Tunnel</a>
+      <a href="/config" class="button is-info">Edit Global Configuration</a>
+      <a href="/edit_raw" class="button is-warning">Edit Raw Config</a>
+      <a href="/view_all_logs" class="button is-primary">View All Logs</a>
+    </div>
+    <div class="field">
+      <table class="table is-fullwidth is-striped">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Local Host</th>
+            <th>Local Port</th>
+            <th>Remote Server</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Tunnels}}
+          <tr>
+            <td>{{.Name}}</td>
+            <td><span class="tag" data-status="{{.Name}}">{{with index $.Statuses .Name}}{{.State}}{{else}}unknown{{end}}</span></td>
+            <td>{{if not .LocalHost}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.LocalHost}}</span>{{else}}{{.LocalHost}}{{end}}</td>
+            <td>{{if eq .LocalPort 0}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.LocalPort}}</span>{{else}}{{.LocalPort}}{{end}}</td>
+            <td>{{if not .RemoteServer}}<span class="global-config-value" title="Value comes from the global configuration">{{.Effective.RemoteServer}}</span>{{else}}{{.RemoteServer}}{{end}}</td>
+            <td>
+              <form action="/toggle/{{.Name}}" method="POST" style="display:inline;" data-toggle-form>
+                <button
+                  type="submit"
+                  class="button is-small {{if .Disabled}}is-danger{{else}}is-success{{end}} toggle-button"
+                  data-toggle-button
+                  data-disabled="{{if .Disabled}}true{{else}}false{{end}}"
+                >
+                  {{if .Disabled}}Enable{{else}}Disable{{end}}
+                </button>
+              </form>
+              <a href="/edit/{{.Name}}" class="button is-small is-info">Edit Tunnel</a>
+              <form action="/delete/{{.Name}}" method="POST" style="display:inline;">
+                <button type="submit" class="button is-small is-danger" onclick="return confirm('Are you sure you want to delete this tunnel?');">Delete Tunnel</button>
+              </form>
+              <a href="/logs/{{.Name}}" class="button is-small is-primary">View Logs</a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{{end}}
