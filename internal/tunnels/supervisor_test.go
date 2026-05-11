@@ -3,6 +3,8 @@ package tunnels
 import (
 	"context"
 	"io"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,7 +54,12 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launched = append(launched, resolved.RemoteForward())
-		_, _ = logWriter.Write([]byte("hello\n"))
+		writer := newPrefixedWriter(logWriter, tunnel.Name)
+		_, _ = writer.Write([]byte("Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n"))
+		_, _ = writer.Write([]byte("Press Ctrl-C to close the session.\n"))
+		_, _ = writer.Write([]byte("HTTPS: https://example.com\n"))
+		_, _ = writer.Write([]byte("HTTP: http://example.com\n"))
+		_, _ = writer.Write([]byte("hello\n"))
 		return proc, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
@@ -81,6 +88,36 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	}
 	if st.State != StateStopped {
 		t.Fatalf("status state = %s, want %s", st.State, StateStopped)
+	}
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	logText := string(content)
+	if strings.Contains(logText, "Starting SSH Forwarding service for") {
+		t.Fatalf("log contains startup chatter: %q", logText)
+	}
+	if strings.Contains(logText, "Press Ctrl-C to close the session.") {
+		t.Fatalf("log contains startup chatter: %q", logText)
+	}
+	if strings.Contains(logText, "HTTPS: https://example.com") {
+		t.Fatalf("log contains startup chatter: %q", logText)
+	}
+	if strings.Contains(logText, "HTTP: http://example.com") {
+		t.Fatalf("log contains startup chatter: %q", logText)
+	}
+	if !strings.Contains(logText, "one | starting | tunnel is starting") {
+		t.Fatalf("log missing starting line: %q", logText)
+	}
+	if !strings.Contains(logText, "one | running | tunnel is running") {
+		t.Fatalf("log missing running line: %q", logText)
+	}
+	if !strings.Contains(logText, "one | stopped | tunnel has stopped") {
+		t.Fatalf("log missing stopped line: %q", logText)
+	}
+	if !strings.Contains(logText, "hello") {
+		t.Fatalf("log missing real tunnel output: %q", logText)
 	}
 }
 

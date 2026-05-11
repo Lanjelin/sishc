@@ -73,3 +73,70 @@ func TestIndexRenders(t *testing.T) {
 		t.Fatalf("body missing inherited-value styling: %q", rr.Body.String())
 	}
 }
+
+func TestTunnelLogsStripPrefix(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := config.Save(cfgPath, config.Config{}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	logPath := filepath.Join(dir, "sishc.log")
+	if err := os.WriteFile(logPath, []byte("testsi.svan.es: 2026/05/11 - 08:12:06 | testsi.svan.es | 200 |  2.661529165s |   148.123.47.18 | GET      /\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	srv, err := New(cfgPath, logPath, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/logs/testsi.svan.es", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", rr.Code, http.StatusOK)
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, "testsi.svan.es: 2026/05/11") {
+		t.Fatalf("body still contains tunnel prefix: %q", body)
+	}
+	if !strings.Contains(body, "2026/05/11 - 08:12:06 | testsi.svan.es | 200") {
+		t.Fatalf("body missing stripped log line: %q", body)
+	}
+}
+
+func TestTunnelLogsReverseOrder(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := config.Save(cfgPath, config.Config{}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	logPath := filepath.Join(dir, "sishc.log")
+	logContent := strings.Join([]string{
+		"testsi.svan.es: first",
+		"testsi.svan.es: second",
+		"testsi.svan.es: third",
+	}, "\n") + "\n"
+	if err := os.WriteFile(logPath, []byte(logContent), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	srv, err := New(cfgPath, logPath, nil)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/logs/testsi.svan.es", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	first := strings.Index(body, "third")
+	second := strings.Index(body, "second")
+	third := strings.Index(body, "first")
+	if first < 0 || second < 0 || third < 0 {
+		t.Fatalf("body missing expected lines: %q", body)
+	}
+	if !(first < second && second < third) {
+		t.Fatalf("logs not reversed: %q", body)
+	}
+}

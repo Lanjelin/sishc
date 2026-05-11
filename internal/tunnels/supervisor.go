@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +18,8 @@ import (
 )
 
 type State string
+
+var ansiRegexp = regexp.MustCompile(`\x1B[@-_][0-?]*[ -/]*[@-~]`)
 
 const (
 	StateDisabled     State = "disabled"
@@ -203,10 +206,12 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			})
 		}
 
+		s.appendStatusLogLine(name, StateStarting, "tunnel is starting")
 		tCtx, cancel := context.WithCancel(ctx)
 		logWriter, err := s.openLogWriter(name)
 		if err != nil {
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			cancel()
 			continue
 		}
@@ -216,6 +221,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			_ = logWriter.Close()
 			cancel()
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			continue
 		}
 
@@ -227,6 +233,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			logFile: logWriter,
 		}
 		s.setStatusLocked(name, StateRunning, "running", command, 0)
+		s.appendStatusLogLine(name, StateRunning, "tunnel is running")
 		go s.watchProcess(name, process, cancel, command, logWriter)
 	}
 
@@ -271,6 +278,12 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	}
 	delete(s.processes, name)
 	s.setStatusLocked(name, state, detail, command, exitCode)
+	switch state {
+	case StateStopped:
+		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
+	case StateError:
+		s.appendStatusLogLine(name, StateError, "tunnel has errored: "+detail)
+	}
 	_ = logFile.Close()
 	cancel()
 }
@@ -291,6 +304,9 @@ func (s *Supervisor) stopAll() {
 }
 
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) {
+	if final.State == StateStopped || final.State == StateDisabled {
+		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
+	}
 	s.stopping[name] = final
 	_ = current.process.Stop()
 	current.cancel()
@@ -327,6 +343,20 @@ func (s *Supervisor) openLogWriter(name string) (*os.File, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+func (s *Supervisor) appendStatusLogLine(name string, state State, detail string) {
+	label, message := statusLogLabel(state, detail)
+	if label == "" || message == "" {
+		return
+	}
+	f, err := os.OpenFile(s.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	_, _ = fmt.Fprintf(f, "%s | %s | %s | %s\n", time.Now().Format("2006/01/02 - 15:04:05"), name, label, message)
 }
 
 func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
@@ -403,6 +433,9 @@ func (p *prefixedWriter) Write(data []byte) (int, error) {
 		if line == "" {
 			continue
 		}
+		if shouldSkipLogLine(line) {
+			continue
+		}
 		if _, err := fmt.Fprintf(p.w, "%s: %s\n", p.prefix, line); err != nil {
 			return 0, err
 		}
@@ -428,6 +461,46 @@ func expandSSHKey(value string) string {
 		return value
 	}
 	return filepath.Join(home, ".ssh", value)
+}
+
+func shouldSkipLogLine(line string) bool {
+	line = strings.TrimSpace(stripANSI(line))
+	switch {
+	case line == "":
+		return true
+	case strings.HasPrefix(line, "Starting SSH Forwarding service for "):
+		return true
+	case line == "Press Ctrl-C to close the session.":
+		return true
+	case strings.HasPrefix(line, "HTTPS: "):
+		return true
+	case strings.HasPrefix(line, "HTTP: "):
+		return true
+	default:
+		return false
+	}
+}
+
+func stripANSI(s string) string {
+	return ansiRegexp.ReplaceAllString(s, "")
+}
+
+func statusLogLabel(state State, detail string) (string, string) {
+	switch state {
+	case StateStarting:
+		return "starting", "tunnel is starting"
+	case StateRunning:
+		return "running", "tunnel is running"
+	case StateStopped:
+		return "stopped", "tunnel has stopped"
+	case StateError:
+		if detail == "" {
+			return "errored", "tunnel has errored"
+		}
+		return "errored", detail
+	default:
+		return "", ""
+	}
 }
 
 func (s *Supervisor) StatusFor(name string) (Status, bool) {

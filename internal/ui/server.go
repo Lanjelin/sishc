@@ -394,9 +394,10 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 
 		lines, nextOffset, err := readLogChunk(s.logPath, offset, tunnel)
 		if err == nil && len(lines) > 0 {
-			for _, line := range lines {
-				fmt.Fprintf(w, "data: %s\n\n", line)
+			for i := len(lines) - 1; i >= 0; i-- {
+				fmt.Fprintf(w, "data: %s\n", lines[i])
 			}
+			fmt.Fprint(w, "\n")
 			flusher.Flush()
 			offset = nextOffset
 		}
@@ -502,6 +503,7 @@ func readLogs(path string, limit int, tunnel string) ([]string, error) {
 	if len(lines) > limit {
 		lines = lines[len(lines)-limit:]
 	}
+	reverseStrings(lines)
 	return lines, nil
 }
 
@@ -529,7 +531,7 @@ func readLogChunk(path string, offset int64, tunnel string) ([]string, int64, er
 	for scanner.Scan() {
 		line := scanner.Text()
 		if tunnel == "" || strings.Contains(line, tunnel+":") {
-			out = append(out, stripANSI(line))
+			out = append(out, normalizeLogLine(line, tunnel))
 		}
 		buf.WriteString(line)
 		buf.WriteByte('\n')
@@ -543,4 +545,22 @@ func readLogChunk(path string, offset int64, tunnel string) ([]string, int64, er
 
 func stripANSI(s string) string {
 	return ansiRegexp.ReplaceAllString(s, "")
+}
+
+func reverseStrings(values []string) {
+	for left, right := 0, len(values)-1; left < right; left, right = left+1, right-1 {
+		values[left], values[right] = values[right], values[left]
+	}
+}
+
+func normalizeLogLine(line, tunnel string) string {
+	line = stripANSI(line)
+	if tunnel == "" {
+		return line
+	}
+	prefix := tunnel + ": "
+	if strings.HasPrefix(line, prefix) {
+		return strings.TrimPrefix(line, prefix)
+	}
+	return line
 }

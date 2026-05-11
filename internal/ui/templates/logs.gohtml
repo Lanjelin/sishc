@@ -1,12 +1,19 @@
 {{define "head"}}
 <script>
+function scrollLogToBottom(pre) {
+  if (!pre) return;
+  pre.scrollTop = 0;
+}
+
 window.addEventListener("load", () => {
   const pre = document.getElementById("log-output");
   if (!pre || !pre.dataset.stream) return;
   const source = new EventSource(pre.dataset.stream);
   source.onmessage = (event) => {
-    pre.textContent += event.data + "\n";
+    pre.textContent = event.data + "\n" + pre.textContent;
+    scrollLogToBottom(pre);
   };
+  scrollLogToBottom(pre);
 });
 </script>
 {{end}}
@@ -17,7 +24,7 @@ window.addEventListener("load", () => {
     <h1 class="title">{{.Heading}}</h1>
     <div class="field"><a href="{{.BackURL}}" class="button is-link">Back to Tunnels</a></div>
     <div class="field">
-      <pre class="box" id="log-output" {{if .ShowStream}}data-stream="{{.StreamURL}}"{{end}}>{{range .Logs}}{{.}}{{"\n"}}{{end}}</pre>
+      <pre class="box log-output" id="log-output" {{if .ShowStream}}data-stream="{{.StreamURL}}"{{end}}>{{range .Logs}}{{.}}{{"\n"}}{{end}}</pre>
     </div>
   </div>
 </section>
