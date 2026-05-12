@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lanjelin/sishc/internal/config"
@@ -216,5 +217,22 @@ func TestParseOneoffArgsSupportsRandomSubdomainAndPortOnly(t *testing.T) {
 	}
 	if localAddr != "localhost:6080" {
 		t.Fatalf("localAddr = %q, want localhost:6080", localAddr)
+	}
+}
+
+func TestAcquireConfigLockPreventsSecondDaemon(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	lockFile, err := acquireConfigLock(cfgPath)
+	if err != nil {
+		t.Fatalf("acquireConfigLock() error = %v", err)
+	}
+	defer func() {
+		_ = lockFile.Close()
+	}()
+
+	if _, err := acquireConfigLock(cfgPath); err == nil || !strings.Contains(err.Error(), "another daemon is already running") {
+		t.Fatalf("acquireConfigLock() second call error = %v, want busy error", err)
 	}
 }
