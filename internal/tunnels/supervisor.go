@@ -51,8 +51,10 @@ type Supervisor struct {
 	cfgPath string
 	logPath string
 	launch  Launcher
+	logger  *log.Logger
 
 	mu        sync.Mutex
+	reconcileMu sync.Mutex
 	status    map[string]Status
 	processes map[string]trackedProcess
 	stopping  map[string]Status
@@ -65,6 +67,7 @@ type trackedProcess struct {
 	cancel  context.CancelFunc
 	command []string
 	logFile *os.File
+	done    chan struct{}
 }
 
 func NewSupervisor(cfgPath, logPath string, launch Launcher) *Supervisor {
@@ -75,6 +78,7 @@ func NewSupervisor(cfgPath, logPath string, launch Launcher) *Supervisor {
 		cfgPath:   cfgPath,
 		logPath:   logPath,
 		launch:    launch,
+		logger:    log.Default(),
 		status:    make(map[string]Status),
 		processes: make(map[string]trackedProcess),
 		stopping:  make(map[string]Status),
@@ -151,6 +155,9 @@ func (s *Supervisor) configChanged() (bool, error) {
 }
 
 func (s *Supervisor) reconcile(ctx context.Context) error {
+	s.reconcileMu.Lock()
+	defer s.reconcileMu.Unlock()
+
 	cfg, err := config.Load(s.cfgPath)
 	if err != nil {
 		return err
@@ -173,30 +180,29 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for name, tunnel := range desired {
-		spec := tunnelSpec(tunnel)
-		if tunnel.Disabled {
-			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0)
-			if current, ok := s.processes[name]; ok {
-				s.requestStopLocked(name, current, Status{
-					Name:         name,
-					State:        StateDisabled,
-					Detail:       "disabled in config",
-					Command:      append([]string(nil), current.command...),
-					UpdatedAt:    time.Now().UTC(),
-					LastExitCode: 0,
-				})
-			}
-			continue
-		}
-
-		current, ok := s.processes[name]
-		if ok && current.spec == spec {
-			s.setStatusLocked(name, StateRunning, "running", current.command, 0)
-			continue
-		}
-		if ok {
-			s.requestStopLocked(name, current, Status{
+	for name, current := range s.processes {
+		tunnel, ok := desired[name]
+		switch {
+		case !ok:
+			_ = s.requestStopLocked(name, current, Status{
+				Name:         name,
+				State:        StateStopped,
+				Detail:       "removed from config",
+				Command:      append([]string(nil), current.command...),
+				UpdatedAt:    time.Now().UTC(),
+				LastExitCode: 0,
+			})
+		case tunnel.Disabled:
+			_ = s.requestStopLocked(name, current, Status{
+				Name:         name,
+				State:        StateDisabled,
+				Detail:       "disabled in config",
+				Command:      append([]string(nil), current.command...),
+				UpdatedAt:    time.Now().UTC(),
+				LastExitCode: 0,
+			})
+		case current.spec != tunnelSpec(tunnel):
+			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateStopped,
 				Detail:       "restarting",
@@ -205,12 +211,27 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				LastExitCode: 0,
 			})
 		}
+	}
+
+	for name, tunnel := range desired {
+		spec := tunnelSpec(tunnel)
+		if tunnel.Disabled {
+			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0)
+			continue
+		}
+
+		current, ok := s.processes[name]
+		if ok && current.spec == spec {
+			s.setStatusLocked(name, StateRunning, "running", current.command, 0)
+			continue
+		}
 
 		s.appendStatusLogLine(name, StateStarting, "tunnel is starting")
 		tCtx, cancel := context.WithCancel(ctx)
 		logWriter, err := s.openLogWriter(name)
 		if err != nil {
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.lifecyclef("errored tunnel %s: %v", name, err)
 			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			cancel()
 			continue
@@ -221,6 +242,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			_ = logWriter.Close()
 			cancel()
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.lifecyclef("errored tunnel %s: %v", name, err)
 			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			continue
 		}
@@ -231,29 +253,24 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			cancel:  cancel,
 			command: command,
 			logFile: logWriter,
+			done:    make(chan struct{}),
 		}
 		s.setStatusLocked(name, StateRunning, "running", command, 0)
+		s.lifecyclef("tunnel %s started", name)
 		s.appendStatusLogLine(name, StateRunning, "tunnel is running")
-		go s.watchProcess(name, process, cancel, command, logWriter)
+		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
 	}
 
-	for name, current := range s.processes {
+	for name := range s.status {
 		if _, ok := desired[name]; !ok {
-			s.requestStopLocked(name, current, Status{
-				Name:         name,
-				State:        StateStopped,
-				Detail:       "removed from config",
-				Command:      append([]string(nil), current.command...),
-				UpdatedAt:    time.Now().UTC(),
-				LastExitCode: 0,
-			})
+			delete(s.status, name)
 		}
 	}
 
 	return nil
 }
 
-func (s *Supervisor) watchProcess(name string, process Process, cancel context.CancelFunc, command []string, logFile *os.File) {
+func (s *Supervisor) watchProcess(name string, process Process, cancel context.CancelFunc, command []string, logFile *os.File, done chan struct{}) {
 	err := process.Wait()
 	exitCode := 0
 	detail := "exited"
@@ -266,6 +283,9 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 		}
 	}
 
+	if done != nil {
+		close(done)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if final, ok := s.stopping[name]; ok {
@@ -280,8 +300,10 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	s.setStatusLocked(name, state, detail, command, exitCode)
 	switch state {
 	case StateStopped:
+		s.lifecyclef("tunnel %s stopped", name)
 		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
 	case StateError:
+		s.lifecyclef("tunnel %s errored: %s", name, detail)
 		s.appendStatusLogLine(name, StateError, "tunnel has errored: "+detail)
 	}
 	_ = logFile.Close()
@@ -292,7 +314,7 @@ func (s *Supervisor) stopAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for name, current := range s.processes {
-		s.requestStopLocked(name, current, Status{
+		_ = s.requestStopLocked(name, current, Status{
 			Name:         name,
 			State:        StateStopped,
 			Detail:       "stopped",
@@ -303,7 +325,7 @@ func (s *Supervisor) stopAll() {
 	}
 }
 
-func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) {
+func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
 	if final.State == StateStopped || final.State == StateDisabled {
 		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
 	}
@@ -311,6 +333,19 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 	_ = current.process.Stop()
 	current.cancel()
 	delete(s.processes, name)
+	if current.done == nil {
+		return true
+	}
+	select {
+	case <-current.done:
+		s.lifecyclef("tunnel %s stopped", name)
+		return true
+	case <-time.After(5 * time.Second):
+		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0)
+		s.lifecyclef("tunnel %s errored: timed out stopping tunnel", name)
+		s.appendStatusLogLine(name, StateError, "tunnel has errored: timed out stopping tunnel")
+		return false
+	}
 }
 
 func (s *Supervisor) setStatusLocked(name string, state State, detail string, command []string, exitCode int) {
@@ -385,6 +420,18 @@ func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.
 		return nil, command, err
 	}
 	return &osProcess{cmd: cmd}, command, nil
+}
+
+func RunOneOff(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) error {
+	process, _, err := defaultLauncher(ctx, tunnel, tunnel, logWriter)
+	if err != nil {
+		return err
+	}
+	err = process.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
 }
 
 type osProcess struct {
@@ -518,4 +565,16 @@ func (s *Supervisor) Shutdown() {
 	s.stopAll()
 }
 
-func (s *Supervisor) SetLogger(_ *log.Logger) {}
+func (s *Supervisor) SetLogger(logger *log.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logger = logger
+}
+
+func (s *Supervisor) lifecyclef(format string, args ...any) {
+	if s.logger != nil {
+		s.logger.Printf(format, args...)
+		return
+	}
+	log.Printf(format, args...)
+}

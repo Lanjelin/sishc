@@ -1,7 +1,9 @@
 package tunnels
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"io"
 	"os"
 	"strings"
@@ -227,5 +229,244 @@ func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 	}
 	if st.State != StateDisabled {
 		t.Fatalf("status state = %s, want %s", st.State, StateDisabled)
+	}
+}
+
+func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logPath := dir + "/sishc.log"
+
+	proc1 := &fakeProcess{waitCh: make(chan error, 1), pid: 1001}
+	proc2 := &fakeProcess{waitCh: make(chan error, 1), pid: 1002}
+	launchCount := 0
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		launchCount++
+		if launchCount == 1 {
+			return proc1, []string{"autossh", resolved.RemoteForward()}, nil
+		}
+		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logPath, launcher)
+	initial := config.Config{
+		SSHKey:       "id_rsa",
+		LocalHost:    "localhost",
+		LocalProtocol: "http",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+	updated := initial
+	updated.Tunnels[0].LocalPort = 9090
+	if err := config.Save(cfgPath, updated); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- s.ReconcileNow(context.Background())
+	}()
+	time.Sleep(20 * time.Millisecond)
+	if proc1.stops == 0 {
+		t.Fatal("old process was not stopped")
+	}
+	if launchCount != 1 {
+		t.Fatalf("launchCount = %d, want 1 before old process exits", launchCount)
+	}
+	proc1.waitCh <- nil
+	if err := <-done; err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+	if launchCount != 2 {
+		t.Fatalf("launchCount = %d, want 2", launchCount)
+	}
+	st, ok := s.StatusFor("one")
+	if !ok {
+		t.Fatal("StatusFor() missing tunnel")
+	}
+	if st.State != StateRunning {
+		t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+	}
+}
+
+func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logPath := dir + "/sishc.log"
+
+	proc1 := &fakeProcess{waitCh: make(chan error, 1), pid: 2001}
+	proc2 := &fakeProcess{waitCh: make(chan error, 1), pid: 2002}
+	launchCount := 0
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		launchCount++
+		if launchCount == 1 {
+			return proc1, []string{"autossh", resolved.RemoteForward()}, nil
+		}
+		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logPath, launcher)
+	initial := config.Config{
+		SSHKey:       "id_rsa",
+		LocalHost:    "localhost",
+		LocalProtocol: "http",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "test231", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	updated := initial
+	updated.Tunnels[0].Name = "test2312"
+	if err := config.Save(cfgPath, updated); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.ReconcileNow(context.Background())
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	if proc1.stops == 0 {
+		t.Fatal("old process was not stopped")
+	}
+	if launchCount != 1 {
+		t.Fatalf("launchCount = %d, want 1 before old process exits", launchCount)
+	}
+
+	proc1.waitCh <- nil
+	if err := <-done; err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+	if launchCount != 2 {
+		t.Fatalf("launchCount = %d, want 2", launchCount)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		stOld, ok := s.StatusFor("test231")
+		if ok && stOld.State == StateStopped {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("old tunnel state did not reach stopped: %+v", stOld)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	stNew, ok := s.StatusFor("test2312")
+	if !ok {
+		t.Fatal("StatusFor() missing new tunnel")
+	}
+	if stNew.State != StateRunning {
+		t.Fatalf("new tunnel state = %s, want %s", stNew.State, StateRunning)
+	}
+}
+
+func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logPath := dir + "/sishc.log"
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		return proc, []string{"autossh", resolved.RemoteForward()}, nil
+	}
+
+	var buf bytes.Buffer
+	s := NewSupervisor(cfgPath, logPath, launcher)
+	s.SetLogger(log.New(&buf, "", 0))
+
+	cfg := config.Config{
+		Tunnels: []config.Tunnel{
+			{Name: "one", SSHKey: "id_rsa", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.Shutdown()
+		close(done)
+	}()
+	proc.waitCh <- nil
+	<-done
+	deadline := time.Now().Add(time.Second)
+	for {
+		got := buf.String()
+		if strings.Contains(got, "tunnel one stopped") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("logger missing stopped line: %q", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "tunnel one started") {
+		t.Fatalf("logger missing started line: %q", got)
+	}
+	if !strings.Contains(got, "tunnel one stopped") {
+		t.Fatalf("logger missing stopped line: %q", got)
+	}
+	if strings.Count(got, "tunnel one stopped") != 1 {
+		t.Fatalf("logger stopped line appeared more than once: %q", got)
+	}
+}
+
+func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logPath := dir + "/sishc.log"
+
+	cfg := config.Config{
+		Tunnels: []config.Tunnel{
+			{Name: "one", Disabled: true},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	s := NewSupervisor(cfgPath, logPath, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		t.Fatal("launcher should not be called for disabled tunnels")
+		return nil, nil, nil
+	})
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	updated := config.Config{}
+	if err := config.Save(cfgPath, updated); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	if _, ok := s.StatusFor("one"); ok {
+		t.Fatal("StatusFor() should not include deleted tunnel")
 	}
 }

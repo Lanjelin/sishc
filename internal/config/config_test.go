@@ -119,3 +119,138 @@ func TestLoadExampleConfig(t *testing.T) {
 		t.Fatalf("Load() tunnel disabled mismatch: %+v", got.Tunnels[2])
 	}
 }
+
+func TestLoadEnabledFalseAndDisabledTrueAreEquivalent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	data := []byte(`
+tunnels:
+  - name: one
+    enabled: false
+  - name: two
+    disabled: true
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Tunnels) != 2 {
+		t.Fatalf("Load() tunnels = %d, want 2", len(got.Tunnels))
+	}
+	if !got.Tunnels[0].Disabled {
+		t.Fatalf("Load() enabled:false tunnel should be disabled: %+v", got.Tunnels[0])
+	}
+	if !got.Tunnels[1].Disabled {
+		t.Fatalf("Load() disabled:true tunnel should be disabled: %+v", got.Tunnels[1])
+	}
+}
+
+func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
+	cfg := Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+	}
+
+	tunnel, err := BuildTunnel("one", "localhost:8080", cfg, TunnelBuildOptions{})
+	if err != nil {
+		t.Fatalf("BuildTunnel() error = %v", err)
+	}
+	if tunnel.SSHKey != "~/.ssh/id_rsa" {
+		t.Fatalf("BuildTunnel() SSHKey = %q", tunnel.SSHKey)
+	}
+	if tunnel.RemotePort != 2222 {
+		t.Fatalf("BuildTunnel() RemotePort = %d", tunnel.RemotePort)
+	}
+	if tunnel.RemoteServer != "example.com" {
+		t.Fatalf("BuildTunnel() RemoteServer = %q", tunnel.RemoteServer)
+	}
+	if tunnel.LocalProtocol != "http" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want http", tunnel.LocalProtocol)
+	}
+
+	tcpCfg := cfg
+	tcpCfg.LocalProtocol = "tcp"
+	tcpFromGlobal, err := BuildTunnel("three", "localhost:8081", tcpCfg, TunnelBuildOptions{})
+	if err != nil {
+		t.Fatalf("BuildTunnel() global tcp error = %v", err)
+	}
+	if tcpFromGlobal.LocalProtocol != "tcp" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want tcp", tcpFromGlobal.LocalProtocol)
+	}
+
+	httpsCfg := cfg
+	httpsCfg.LocalProtocol = "https"
+	httpsFromGlobal, err := BuildTunnel("four", "localhost:8082", httpsCfg, TunnelBuildOptions{})
+	if err != nil {
+		t.Fatalf("BuildTunnel() global https error = %v", err)
+	}
+	if httpsFromGlobal.LocalProtocol != "https" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want https", httpsFromGlobal.LocalProtocol)
+	}
+
+	tcpTunnel, err := BuildTunnel("two", "127.0.0.1:22", cfg, TunnelBuildOptions{
+		LocalProtocol: "tcp",
+		SSHKey:        "/tmp/custom_key",
+		RemotePort:    2525,
+		RemoteServer:  "remote.example.com",
+	})
+	if err != nil {
+		t.Fatalf("BuildTunnel() tcp error = %v", err)
+	}
+	if tcpTunnel.LocalProtocol != "tcp" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want tcp", tcpTunnel.LocalProtocol)
+	}
+	if tcpTunnel.SSHKey != "/tmp/custom_key" {
+		t.Fatalf("BuildTunnel() SSHKey = %q", tcpTunnel.SSHKey)
+	}
+	if tcpTunnel.RemotePort != 2525 {
+		t.Fatalf("BuildTunnel() RemotePort = %d", tcpTunnel.RemotePort)
+	}
+	if tcpTunnel.RemoteServer != "remote.example.com" {
+		t.Fatalf("BuildTunnel() RemoteServer = %q", tcpTunnel.RemoteServer)
+	}
+
+	httpsTunnel, err := BuildTunnel("five", "127.0.0.1:443", cfg, TunnelBuildOptions{
+		LocalProtocol: "https",
+	})
+	if err != nil {
+		t.Fatalf("BuildTunnel() https error = %v", err)
+	}
+	if httpsTunnel.LocalProtocol != "https" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want https", httpsTunnel.LocalProtocol)
+	}
+}
+
+func TestConfigTunnelHelpers(t *testing.T) {
+	cfg := Config{
+		Tunnels: []Tunnel{
+			{Name: "one"},
+			{Name: "two"},
+		},
+	}
+
+	cfg.UpsertTunnel(Tunnel{Name: "one", Disabled: true})
+	if !cfg.Tunnels[0].Disabled {
+		t.Fatalf("UpsertTunnel() did not replace tunnel: %+v", cfg.Tunnels[0])
+	}
+
+	if !cfg.SetTunnelDisabled("two", true) {
+		t.Fatal("SetTunnelDisabled() returned false")
+	}
+	if !cfg.Tunnels[1].Disabled {
+		t.Fatalf("SetTunnelDisabled() did not update tunnel: %+v", cfg.Tunnels[1])
+	}
+
+	if !cfg.RemoveTunnel("one") {
+		t.Fatal("RemoveTunnel() returned false")
+	}
+	if len(cfg.Tunnels) != 1 || cfg.Tunnels[0].Name != "two" {
+		t.Fatalf("RemoveTunnel() unexpected tunnels: %+v", cfg.Tunnels)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,6 +36,13 @@ type Config struct {
 	Tunnels       []Tunnel `yaml:"tunnels,omitempty"`
 }
 
+type TunnelBuildOptions struct {
+	SSHKey        string
+	LocalProtocol string
+	RemotePort    int
+	RemoteServer  string
+}
+
 func DefaultConfigPath() string {
 	if override := os.Getenv("SISHC_CONFIG_FILE"); override != "" {
 		return override
@@ -63,6 +71,24 @@ func DefaultLogPath() string {
 		xdg = filepath.Join(home, ".local", "share")
 	}
 	return filepath.Join(xdg, "sishc", "sishc.log")
+}
+
+func DefaultSocketPath() string {
+	if override := os.Getenv("SISHC_SOCKET"); override != "" {
+		return override
+	}
+	if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
+		return filepath.Join(runtimeDir, "sishc.sock")
+	}
+	xdg := os.Getenv("XDG_DATA_HOME")
+	if xdg == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return filepath.Join(".", "sishc", "sishc.sock")
+		}
+		xdg = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(xdg, "sishc", "sishc.sock")
 }
 
 func Load(path string) (Config, error) {
@@ -141,8 +167,13 @@ func (c Config) EffectiveTunnel(t Tunnel) Tunnel {
 	if t.SSHKey == "" {
 		t.SSHKey = c.SSHKey
 	}
-	if t.LocalProtocol == "" {
-		t.LocalProtocol = c.LocalProtocol
+	switch {
+	case strings.EqualFold(t.LocalProtocol, "https") || strings.EqualFold(c.LocalProtocol, "https"):
+		t.LocalProtocol = "https"
+	case strings.EqualFold(t.LocalProtocol, "tcp") || strings.EqualFold(c.LocalProtocol, "tcp"):
+		t.LocalProtocol = "tcp"
+	default:
+		t.LocalProtocol = "http"
 	}
 	if t.LocalHost == "" {
 		t.LocalHost = c.LocalHost
@@ -157,6 +188,120 @@ func (c Config) EffectiveTunnel(t Tunnel) Tunnel {
 		t.RemoteServer = c.RemoteServer
 	}
 	return t
+}
+
+func BuildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions) (Tunnel, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return Tunnel{}, fmt.Errorf("tunnel name is required")
+	}
+
+	host, port, err := resolveLocalEndpoint(localAddr, cfg)
+	if err != nil {
+		return Tunnel{}, err
+	}
+
+	sshKey := firstNonEmpty(opts.SSHKey, cfg.SSHKey)
+	if sshKey == "" {
+		return Tunnel{}, fmt.Errorf("ssh_key is required")
+	}
+	remotePort := opts.RemotePort
+	if remotePort == 0 {
+		remotePort = cfg.RemotePort
+	}
+	if remotePort == 0 {
+		return Tunnel{}, fmt.Errorf("remote_port is required")
+	}
+	remoteServer := firstNonEmpty(opts.RemoteServer, cfg.RemoteServer)
+	if remoteServer == "" {
+		return Tunnel{}, fmt.Errorf("remote_server is required")
+	}
+
+	protocol := "http"
+	switch {
+	case strings.EqualFold(strings.TrimSpace(opts.LocalProtocol), "https") || strings.EqualFold(cfg.LocalProtocol, "https"):
+		protocol = "https"
+	case strings.EqualFold(strings.TrimSpace(opts.LocalProtocol), "tcp") || strings.EqualFold(cfg.LocalProtocol, "tcp"):
+		protocol = "tcp"
+	}
+
+	return Tunnel{
+		Name:          name,
+		SSHKey:        sshKey,
+		LocalProtocol: protocol,
+		LocalHost:     host,
+		LocalPort:     port,
+		RemotePort:    remotePort,
+		RemoteServer:  remoteServer,
+	}, nil
+}
+
+func resolveLocalEndpoint(localAddr string, cfg Config) (string, int, error) {
+	localAddr = strings.TrimSpace(localAddr)
+	if localAddr == "" {
+		if cfg.LocalHost == "" || cfg.LocalPort == 0 {
+			return "", 0, fmt.Errorf("local_host and local_port are required")
+		}
+		return cfg.LocalHost, cfg.LocalPort, nil
+	}
+
+	host, portStr, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid local host:port %q", localAddr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid local port %q", portStr)
+	}
+	return host, port, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (c *Config) UpsertTunnel(t Tunnel) {
+	for i := range c.Tunnels {
+		if c.Tunnels[i].Name == t.Name {
+			c.Tunnels[i] = t
+			return
+		}
+	}
+	c.Tunnels = append(c.Tunnels, t)
+}
+
+func (c *Config) RemoveTunnel(name string) bool {
+	for i := range c.Tunnels {
+		if c.Tunnels[i].Name == name {
+			c.Tunnels = append(c.Tunnels[:i], c.Tunnels[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Config) SetTunnelDisabled(name string, disabled bool) bool {
+	for i := range c.Tunnels {
+		if c.Tunnels[i].Name == name {
+			c.Tunnels[i].Disabled = disabled
+			return true
+		}
+	}
+	return false
+}
+
+func (c Config) Tunnel(name string) (Tunnel, bool) {
+	for _, t := range c.Tunnels {
+		if t.Name == name {
+			return t, true
+		}
+	}
+	return Tunnel{}, false
 }
 
 func (c Config) Validate() error {
@@ -379,6 +524,12 @@ func assignTunnelField(t *Tunnel, key, value string) error {
 		t.RemotePort = n
 	case "remote_server":
 		t.RemoteServer = parseString(value)
+	case "enabled":
+		b, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		t.Disabled = !b
 	case "disabled":
 		b, err := parseBool(value)
 		if err != nil {
