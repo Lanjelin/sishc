@@ -59,19 +59,23 @@ func DefaultConfigPath() string {
 	return filepath.Join(xdg, "sishc", "config.yaml")
 }
 
-func DefaultLogPath() string {
-	if override := os.Getenv("SISHC_OUTPUT_LOG"); override != "" {
+func DefaultLogDir() string {
+	if override := os.Getenv("SISHC_LOG_DIR"); override != "" {
 		return override
 	}
 	xdg := os.Getenv("XDG_DATA_HOME")
 	if xdg == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return filepath.Join(".", "sishc", "sishc.log")
+			return filepath.Join(".", "sishc", "logs")
 		}
 		xdg = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(xdg, "sishc", "sishc.log")
+	return filepath.Join(xdg, "sishc", "logs")
+}
+
+func DefaultLogPath() string {
+	return filepath.Join(DefaultLogDir(), "daemon.log")
 }
 
 func DefaultSocketPath() string {

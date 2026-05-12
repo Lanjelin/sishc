@@ -48,10 +48,11 @@ type Process interface {
 type Launcher func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error)
 
 type Supervisor struct {
-	cfgPath string
-	logPath string
-	launch  Launcher
-	logger  *log.Logger
+	cfgPath   string
+	logDir    string
+	launch    Launcher
+	logger    *log.Logger
+	daemonLog *rotatingFile
 
 	mu          sync.Mutex
 	reconcileMu sync.Mutex
@@ -66,17 +67,17 @@ type trackedProcess struct {
 	process Process
 	cancel  context.CancelFunc
 	command []string
-	logFile *os.File
+	logFile io.Closer
 	done    chan struct{}
 }
 
-func NewSupervisor(cfgPath, logPath string, launch Launcher) *Supervisor {
+func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 	if launch == nil {
 		launch = defaultLauncher
 	}
 	return &Supervisor{
 		cfgPath:   cfgPath,
-		logPath:   logPath,
+		logDir:    logDir,
 		launch:    launch,
 		logger:    log.Default(),
 		status:    make(map[string]Status),
@@ -86,9 +87,13 @@ func NewSupervisor(cfgPath, logPath string, launch Launcher) *Supervisor {
 }
 
 func (s *Supervisor) Run(ctx context.Context) error {
-	if err := s.ensureLogFile(); err != nil {
+	if err := s.ensureLogDir(); err != nil {
 		return err
 	}
+	if err := s.openDaemonLog(); err != nil {
+		return err
+	}
+	defer s.closeDaemonLog()
 
 	if err := s.reconcile(ctx); err != nil {
 		log.Printf("initial reconcile failed: %v", err)
@@ -117,6 +122,28 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 }
 
+func (s *Supervisor) ensureLogDir() error {
+	return os.MkdirAll(s.logDir, 0o755)
+}
+
+func (s *Supervisor) openDaemonLog() error {
+	if s.daemonLog != nil {
+		return nil
+	}
+	w, err := newRotatingFile(filepath.Join(s.logDir, "daemon.log"), logRotateSize, logRotateKeep)
+	if err != nil {
+		return err
+	}
+	s.daemonLog = w
+	return nil
+}
+
+func (s *Supervisor) closeDaemonLog() {
+	if s.daemonLog != nil {
+		_ = s.daemonLog.Close()
+	}
+}
+
 func (s *Supervisor) Snapshot() []Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -126,17 +153,6 @@ func (s *Supervisor) Snapshot() []Status {
 		out = append(out, st)
 	}
 	return out
-}
-
-func (s *Supervisor) ensureLogFile() error {
-	if err := os.MkdirAll(filepath.Dir(s.logPath), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return err
-	}
-	return f.Close()
 }
 
 func (s *Supervisor) configChanged() (bool, error) {
@@ -157,6 +173,10 @@ func (s *Supervisor) configChanged() (bool, error) {
 func (s *Supervisor) reconcile(ctx context.Context) error {
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
+
+	if err := s.openDaemonLog(); err != nil {
+		return err
+	}
 
 	cfg, err := config.Load(s.cfgPath)
 	if err != nil {
@@ -204,6 +224,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			})
 		case current.spec != tunnelSpec(tunnel):
 			restartLater[name] = struct{}{}
+			s.lifecyclef("tunnel %s restarting", name)
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateStopped,
@@ -231,13 +252,12 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			continue
 		}
 
-		s.appendStatusLogLine(name, StateStarting, "tunnel is starting")
+		s.lifecyclef("tunnel %s starting", name)
 		tCtx, cancel := context.WithCancel(ctx)
-		logWriter, err := s.openLogWriter(name)
+		logWriter, err := s.openTunnelLogWriter(name)
 		if err != nil {
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
 			s.lifecyclef("errored tunnel %s: %v", name, err)
-			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			cancel()
 			continue
 		}
@@ -248,7 +268,6 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			cancel()
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
 			s.lifecyclef("errored tunnel %s: %v", name, err)
-			s.appendStatusLogLine(name, StateError, "tunnel has errored: "+err.Error())
 			continue
 		}
 
@@ -262,7 +281,6 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		}
 		s.setStatusLocked(name, StateRunning, "running", command, 0)
 		s.lifecyclef("tunnel %s started", name)
-		s.appendStatusLogLine(name, StateRunning, "tunnel is running")
 		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
 	}
 
@@ -282,7 +300,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	return nil
 }
 
-func (s *Supervisor) watchProcess(name string, process Process, cancel context.CancelFunc, command []string, logFile *os.File, done chan struct{}) {
+func (s *Supervisor) watchProcess(name string, process Process, cancel context.CancelFunc, command []string, logFile io.Closer, done chan struct{}) {
 	err := process.Wait()
 	exitCode := 0
 	detail := "exited"
@@ -313,10 +331,8 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	switch state {
 	case StateStopped:
 		s.lifecyclef("tunnel %s stopped", name)
-		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
 	case StateError:
 		s.lifecyclef("tunnel %s errored: %s", name, detail)
-		s.appendStatusLogLine(name, StateError, "tunnel has errored: "+detail)
 	}
 	_ = logFile.Close()
 	cancel()
@@ -338,9 +354,6 @@ func (s *Supervisor) stopAll() {
 }
 
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
-	if final.State == StateStopped || final.State == StateDisabled {
-		s.appendStatusLogLine(name, StateStopped, "tunnel has stopped")
-	}
 	s.stopping[name] = final
 	_ = current.process.Stop()
 	current.cancel()
@@ -355,7 +368,6 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 	case <-time.After(5 * time.Second):
 		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0)
 		s.lifecyclef("tunnel %s errored: timed out stopping tunnel", name)
-		s.appendStatusLogLine(name, StateError, "tunnel has errored: timed out stopping tunnel")
 		return false
 	}
 }
@@ -384,26 +396,8 @@ func tunnelSpec(t config.Tunnel) string {
 	}, "|")
 }
 
-func (s *Supervisor) openLogWriter(name string) (*os.File, error) {
-	f, err := os.OpenFile(s.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
-}
-
-func (s *Supervisor) appendStatusLogLine(name string, state State, detail string) {
-	label, message := statusLogLabel(state, detail)
-	if label == "" || message == "" {
-		return
-	}
-	f, err := os.OpenFile(s.logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	_, _ = fmt.Fprintf(f, "%s | %s | %s | %s\n", time.Now().Format("2006/01/02 - 15:04:05"), name, label, message)
+func (s *Supervisor) openTunnelLogWriter(name string) (*rotatingFile, error) {
+	return newRotatingFile(filepath.Join(s.logDir, sanitizeLogFileName(name)+".log"), logRotateSize, logRotateKeep)
 }
 
 func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
@@ -422,8 +416,8 @@ func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
-	cmd.Stdout = newPrefixedWriter(logWriter, tunnel.Name)
-	cmd.Stderr = newPrefixedWriter(logWriter, tunnel.Name)
+	cmd.Stdout = newLineFilterWriter(logWriter)
+	cmd.Stderr = newLineFilterWriter(logWriter)
 	cmd.Env = append(os.Environ(),
 		"AUTOSSH_POLL=10",
 		"AUTOSSH_GATETIME=5",
@@ -501,35 +495,6 @@ func (p *osProcess) PID() int {
 	return p.cmd.Process.Pid
 }
 
-type prefixedWriter struct {
-	w      io.Writer
-	prefix string
-	mu     sync.Mutex
-}
-
-func newPrefixedWriter(w io.Writer, prefix string) io.Writer {
-	return &prefixedWriter{w: w, prefix: prefix}
-}
-
-func (p *prefixedWriter) Write(data []byte) (int, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		if shouldSkipLogLine(line) {
-			continue
-		}
-		if _, err := fmt.Fprintf(p.w, "%s: %s\n", p.prefix, line); err != nil {
-			return 0, err
-		}
-	}
-	return len(data), nil
-}
-
 func expandSSHKey(value string) string {
 	if value == "" {
 		return value
@@ -555,9 +520,13 @@ func shouldSkipLogLine(line string) bool {
 	switch {
 	case line == "":
 		return true
+	case strings.HasPrefix(line, "Warning: Permanently added "):
+		return true
 	case strings.HasPrefix(line, "Starting SSH Forwarding service for "):
 		return true
 	case line == "Press Ctrl-C to close the session.":
+		return true
+	case strings.HasPrefix(line, "The subdomain ") && strings.HasSuffix(line, " is unavailable. Assigning a random subdomain."):
 		return true
 	case strings.HasPrefix(line, "HTTPS: "):
 		return true
@@ -570,24 +539,6 @@ func shouldSkipLogLine(line string) bool {
 
 func stripANSI(s string) string {
 	return ansiRegexp.ReplaceAllString(s, "")
-}
-
-func statusLogLabel(state State, detail string) (string, string) {
-	switch state {
-	case StateStarting:
-		return "starting", "tunnel is starting"
-	case StateRunning:
-		return "running", "tunnel is running"
-	case StateStopped:
-		return "stopped", "tunnel has stopped"
-	case StateError:
-		if detail == "" {
-			return "errored", "tunnel has errored"
-		}
-		return "errored", detail
-	default:
-		return "", ""
-	}
 }
 
 func (s *Supervisor) StatusFor(name string) (Status, bool) {
@@ -612,9 +563,11 @@ func (s *Supervisor) SetLogger(logger *log.Logger) {
 }
 
 func (s *Supervisor) lifecyclef(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
 	if s.logger != nil {
-		s.logger.Printf(format, args...)
-		return
+		s.logger.Print(msg)
 	}
-	log.Printf(format, args...)
+	if s.daemonLog != nil {
+		_, _ = fmt.Fprintf(s.daemonLog, "%s %s\n", time.Now().Format("2006/01/02 15:04:05"), msg)
+	}
 }

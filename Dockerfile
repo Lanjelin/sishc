@@ -16,8 +16,9 @@ LABEL org.opencontainers.image.description="Go web UI to manage sish tunnels."
 LABEL org.opencontainers.image.author="Lanjelin"
 LABEL org.opencontainers.image.licenses=GPL-3.0
 
-ENV SISHC_OUTPUT_LOG="/config/sishc.log"
+ENV SISHC_LOG_DIR="/config/logs"
 ENV SISHC_CONFIG_FILE="/config/config.yaml"
+ENV SISHC_SOCKET="/config/sishc.sock"
 ENV HOME="/config"
 
 RUN apk --no-cache add \

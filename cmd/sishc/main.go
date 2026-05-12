@@ -102,7 +102,7 @@ func runDaemon(ctx context.Context, args []string) error {
 		return fmt.Errorf("config validation error: %w", err)
 	}
 
-	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logPath, nil)
+	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logDir, nil)
 	errCh := make(chan error, 2)
 	go func() {
 		if err := supervisor.Run(ctx); err != nil && err != context.Canceled {
@@ -338,7 +338,7 @@ func runOneoff(ctx context.Context, args []string) error {
 
 type pathConfig struct {
 	configPath string
-	logPath    string
+	logDir     string
 	socketPath string
 }
 
@@ -354,14 +354,14 @@ func parsePaths(args []string) (config.Config, pathConfig, error) {
 	fs := flag.NewFlagSet("sishc", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
-	logPath := fs.String("log", config.DefaultLogPath(), "log file path")
+	logDir := fs.String("log-dir", config.DefaultLogDir(), "log directory path")
 	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
 	if err := fs.Parse(args); err != nil {
 		return config.Config{}, pathConfig{}, err
 	}
 	return config.Config{}, pathConfig{
 		configPath: *configPath,
-		logPath:    *logPath,
+		logDir:     *logDir,
 		socketPath: *socketPath,
 	}, nil
 }
@@ -778,7 +778,7 @@ Commands:
 
 Flags:
   --config PATH   Config file path
-  --log PATH      Log file path
+  --log-dir PATH  Log directory path
   --socket PATH   Control socket path
 
 Tunnel flags:

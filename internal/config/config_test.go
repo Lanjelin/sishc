@@ -70,13 +70,20 @@ func TestValidateRejectsInvalidPorts(t *testing.T) {
 
 func TestDefaultPathsRespectEnv(t *testing.T) {
 	t.Setenv("SISHC_CONFIG_FILE", "/tmp/test-config.yaml")
-	t.Setenv("SISHC_OUTPUT_LOG", "/tmp/test-log.yaml")
+	t.Setenv("SISHC_LOG_DIR", "/tmp/test-logs")
+	t.Setenv("SISHC_SOCKET", "/tmp/test.sock")
 
 	if got := DefaultConfigPath(); got != "/tmp/test-config.yaml" {
 		t.Fatalf("DefaultConfigPath() = %q", got)
 	}
-	if got := DefaultLogPath(); got != "/tmp/test-log.yaml" {
+	if got := DefaultLogDir(); got != "/tmp/test-logs" {
+		t.Fatalf("DefaultLogDir() = %q", got)
+	}
+	if got := DefaultLogPath(); got != "/tmp/test-logs/daemon.log" {
 		t.Fatalf("DefaultLogPath() = %q", got)
+	}
+	if got := DefaultSocketPath(); got != "/tmp/test.sock" {
+		t.Fatalf("DefaultSocketPath() = %q", got)
 	}
 }
 

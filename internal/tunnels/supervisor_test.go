@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +36,9 @@ func (p *fakeProcess) PID() int {
 func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
+	daemonLogPath := filepath.Join(logDir, "daemon.log")
+	tunnelLogPath := filepath.Join(logDir, "one.log")
 
 	cfg := config.Config{
 		SSHKey:        "id_rsa",
@@ -56,16 +59,20 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launched = append(launched, resolved.RemoteForward())
-		writer := newPrefixedWriter(logWriter, tunnel.Name)
+		writer := newLineFilterWriter(logWriter)
+		_, _ = writer.Write([]byte("Warning: Permanently added '[lol.gn.gy]:1433' (ED25519) to the list of known hosts.\n"))
 		_, _ = writer.Write([]byte("Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n"))
 		_, _ = writer.Write([]byte("Press Ctrl-C to close the session.\n"))
+		_, _ = writer.Write([]byte("The subdomain localhost.gn.gy is unavailable. Assigning a random subdomain.\n"))
 		_, _ = writer.Write([]byte("HTTPS: https://example.com\n"))
 		_, _ = writer.Write([]byte("HTTP: http://example.com\n"))
+		_, _ = writer.Write([]byte("connect_to localhost port 8060: failed.\n"))
+		_, _ = writer.Write([]byte("ssh: rejected: connect failed (Connection refused)\n"))
 		_, _ = writer.Write([]byte("hello\n"))
 		return proc, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
-	s := NewSupervisor(cfgPath, logPath, launcher)
+	s := NewSupervisor(cfgPath, logDir, launcher)
 	if err := s.ReconcileNow(context.Background()); err != nil {
 		t.Fatalf("ReconcileNow() error = %v", err)
 	}
@@ -92,41 +99,53 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 		t.Fatalf("status state = %s, want %s", st.State, StateStopped)
 	}
 
-	content, err := os.ReadFile(logPath)
+	content, err := os.ReadFile(daemonLogPath)
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	logText := string(content)
+	daemonText := string(content)
+	if !strings.Contains(daemonText, "tunnel one starting") {
+		t.Fatalf("daemon log missing starting line: %q", daemonText)
+	}
+	if !strings.Contains(daemonText, "tunnel one started") {
+		t.Fatalf("daemon log missing started line: %q", daemonText)
+	}
+	if !strings.Contains(daemonText, "tunnel one stopped") {
+		t.Fatalf("daemon log missing stopped line: %q", daemonText)
+	}
+
+	tunnelText, err := os.ReadFile(tunnelLogPath)
+	if err != nil {
+		t.Fatalf("ReadFile() tunnel log error = %v", err)
+	}
+	logText := string(tunnelText)
 	if strings.Contains(logText, "Starting SSH Forwarding service for") {
+		t.Fatalf("log contains startup chatter: %q", logText)
+	}
+	if strings.Contains(logText, "Warning: Permanently added") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
 	if strings.Contains(logText, "Press Ctrl-C to close the session.") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
-	if strings.Contains(logText, "HTTPS: https://example.com") {
+	if strings.Contains(logText, "The subdomain localhost.gn.gy is unavailable") {
 		t.Fatalf("log contains startup chatter: %q", logText)
-	}
-	if strings.Contains(logText, "HTTP: http://example.com") {
-		t.Fatalf("log contains startup chatter: %q", logText)
-	}
-	if !strings.Contains(logText, "one | starting | tunnel is starting") {
-		t.Fatalf("log missing starting line: %q", logText)
-	}
-	if !strings.Contains(logText, "one | running | tunnel is running") {
-		t.Fatalf("log missing running line: %q", logText)
-	}
-	if !strings.Contains(logText, "one | stopped | tunnel has stopped") {
-		t.Fatalf("log missing stopped line: %q", logText)
 	}
 	if !strings.Contains(logText, "hello") {
 		t.Fatalf("log missing real tunnel output: %q", logText)
+	}
+	if !strings.Contains(logText, "connect_to localhost port 8060: failed.") {
+		t.Fatalf("log missing local connect failure: %q", logText)
+	}
+	if !strings.Contains(logText, "ssh: rejected: connect failed (Connection refused)") {
+		t.Fatalf("log missing ssh error: %q", logText)
 	}
 }
 
 func TestSupervisorStopsDisabledTunnel(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	cfg := config.Config{
 		Tunnels: []config.Tunnel{
@@ -137,7 +156,7 @@ func TestSupervisorStopsDisabledTunnel(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	s := NewSupervisor(cfgPath, logPath, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+	s := NewSupervisor(cfgPath, logDir, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		t.Fatal("launcher should not be called for disabled tunnels")
 		return nil, nil, nil
 	})
@@ -156,7 +175,7 @@ func TestSupervisorStopsDisabledTunnel(t *testing.T) {
 func TestSupervisorMarksDisabledTunnelDisabled(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	cfg := config.Config{
 		Tunnels: []config.Tunnel{
@@ -167,7 +186,7 @@ func TestSupervisorMarksDisabledTunnelDisabled(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	s := NewSupervisor(cfgPath, logPath, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+	s := NewSupervisor(cfgPath, logDir, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		t.Fatal("launcher should not be called for disabled tunnels")
 		return nil, nil, nil
 	})
@@ -187,14 +206,14 @@ func TestSupervisorMarksDisabledTunnelDisabled(t *testing.T) {
 func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 4321}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		return proc, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
-	s := NewSupervisor(cfgPath, logPath, launcher)
+	s := NewSupervisor(cfgPath, logDir, launcher)
 
 	enabled := config.Config{
 		Tunnels: []config.Tunnel{
@@ -235,7 +254,7 @@ func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	proc1 := &fakeProcess{waitCh: make(chan error, 1), pid: 1001}
 	proc2 := &fakeProcess{waitCh: make(chan error, 1), pid: 1002}
@@ -248,7 +267,7 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
-	s := NewSupervisor(cfgPath, logPath, launcher)
+	s := NewSupervisor(cfgPath, logDir, launcher)
 	initial := config.Config{
 		SSHKey:        "id_rsa",
 		LocalHost:     "localhost",
@@ -307,7 +326,7 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	proc1 := &fakeProcess{waitCh: make(chan error, 1), pid: 2001}
 	proc2 := &fakeProcess{waitCh: make(chan error, 1), pid: 2002}
@@ -320,7 +339,7 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
-	s := NewSupervisor(cfgPath, logPath, launcher)
+	s := NewSupervisor(cfgPath, logDir, launcher)
 	initial := config.Config{
 		SSHKey:        "id_rsa",
 		LocalHost:     "localhost",
@@ -396,7 +415,7 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
@@ -404,7 +423,7 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	s := NewSupervisor(cfgPath, logPath, launcher)
+	s := NewSupervisor(cfgPath, logDir, launcher)
 	s.SetLogger(log.New(&buf, "", 0))
 
 	cfg := config.Config{
@@ -453,7 +472,7 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
-	logPath := dir + "/sishc.log"
+	logDir := dir + "/logs"
 
 	cfg := config.Config{
 		Tunnels: []config.Tunnel{
@@ -464,7 +483,7 @@ func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	s := NewSupervisor(cfgPath, logPath, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+	s := NewSupervisor(cfgPath, logDir, func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		t.Fatal("launcher should not be called for disabled tunnels")
 		return nil, nil, nil
 	})
