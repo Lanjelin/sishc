@@ -102,7 +102,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	defer s.closeDaemonLog()
 
 	if err := s.reconcile(ctx); err != nil {
-		log.Printf("initial reconcile failed: %v", err)
+		s.lifecyclef("daemon error: initial reconcile failed: %v", err)
 	}
 
 	ticker := time.NewTicker(time.Second)
@@ -116,12 +116,12 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		case <-ticker.C:
 			changed, err := s.configChanged()
 			if err != nil {
-				log.Printf("config watch error: %v", err)
+				s.lifecyclef("daemon error: config watch failed: %v", err)
 				continue
 			}
 			if changed {
 				if err := s.reconcile(ctx); err != nil {
-					log.Printf("reconcile failed: %v", err)
+					s.lifecyclef("daemon error: reconcile failed: %v", err)
 				}
 			}
 		}
@@ -277,7 +277,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		logWriter, err := s.openTunnelLogWriter(name)
 		if err != nil {
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
-			s.lifecyclef("errored tunnel %s: %v", name, err)
+			s.lifecyclef("tunnel %s error: %v", name, err)
 			cancel()
 			continue
 		}
@@ -290,7 +290,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			_ = logWriter.Close()
 			cancel()
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
-			s.lifecyclef("errored tunnel %s: %v", name, err)
+			s.lifecyclef("tunnel %s error: %v", name, err)
 			continue
 		}
 
@@ -359,7 +359,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	case StateStopped:
 		s.lifecyclef("tunnel %s stopped", name)
 	case StateError:
-		s.lifecyclef("tunnel %s errored: %s", name, detail)
+		s.lifecyclef("tunnel %s error: %s", name, detail)
 	}
 	_ = logFile.Close()
 	cancel()
@@ -398,7 +398,7 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 		return true
 	case <-time.After(5 * time.Second):
 		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
-		s.lifecyclef("tunnel %s errored: timed out stopping tunnel", name)
+		s.lifecyclef("tunnel %s error: timed out stopping tunnel", name)
 		return false
 	}
 }

@@ -165,7 +165,7 @@ func runStatus(args []string) error {
 	}
 	resp, err := control.Do(paths.socketPath, control.Request{Command: "status"})
 	if err != nil {
-		return err
+		return daemonUnavailableError(paths.socketPath, paths.configPath, err)
 	}
 	if !resp.OK {
 		return fmt.Errorf(resp.Error)
@@ -192,10 +192,10 @@ func runValidate(args []string) error {
 	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("config %q: %w", cfgPath, err)
 	}
 	if err := cfg.Validate(); err != nil {
-		return err
+		return fmt.Errorf("config %q: %w", cfgPath, err)
 	}
 	fmt.Println("config ok")
 	return nil
@@ -208,7 +208,7 @@ func runReconcile(args []string) error {
 	}
 	resp, err := control.Do(paths.socketPath, control.Request{Command: "reconcile"})
 	if err != nil {
-		return err
+		return daemonUnavailableError(paths.socketPath, paths.configPath, err)
 	}
 	if !resp.OK {
 		return fmt.Errorf(resp.Error)
@@ -227,6 +227,9 @@ func runLogs(ctx context.Context, args []string) error {
 		logPath = filepath.Join(paths.logDir, logFileName(name)+".log")
 	}
 	if err := printLogTail(logPath, tail, os.Stdout); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("log file %q not found; start the daemon or check the tunnel name", logPath)
+		}
 		return err
 	}
 	if !follow {
@@ -326,6 +329,13 @@ func printableIntField(value int) string {
 		return "-"
 	}
 	return strconv.Itoa(value)
+}
+
+func daemonUnavailableError(socketPath, configPath string, err error) error {
+	if os.IsNotExist(err) || strings.Contains(strings.ToLower(err.Error()), "connection refused") || strings.Contains(strings.ToLower(err.Error()), "no such file or directory") {
+		return fmt.Errorf("daemon is not running for %s; start it with `sishc daemon --config %s`", socketPath, configPath)
+	}
+	return fmt.Errorf("daemon is not running for %s: %w", socketPath, err)
 }
 
 func printLogTail(path string, tail int, out io.Writer) error {
