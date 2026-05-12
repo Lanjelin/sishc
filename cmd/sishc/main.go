@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -47,6 +48,8 @@ func main() {
 		err = runReconcile(args)
 	case "add":
 		err = runAdd(args)
+	case "update":
+		err = runUpdate(args)
 	case "remove":
 		err = runRemove(args)
 	case "start":
@@ -178,6 +181,9 @@ func runAdd(args []string) error {
 		return err
 	}
 	return editConfig(paths.configPath, func(cfg *config.Config) error {
+		if _, exists := cfg.Tunnel(name); exists {
+			return fmt.Errorf("tunnel %q already exists", name)
+		}
 		tunnel, err := config.BuildTunnel(name, localAddr, *cfg, opts.Build)
 		if err != nil {
 			return err
@@ -201,6 +207,57 @@ func runAdd(args []string) error {
 			sparse.LocalProtocol = opts.Build.LocalProtocol
 		}
 		cfg.UpsertTunnel(sparse)
+		return nil
+	}, paths.socketPath)
+}
+
+func runUpdate(args []string) error {
+	paths, oldName, newName, localAddr, opts, err := parseTunnelUpdateArgs(args)
+	if err != nil {
+		return err
+	}
+	return editConfig(paths.configPath, func(cfg *config.Config) error {
+		existing, ok := cfg.Tunnel(oldName)
+		if !ok {
+			return fmt.Errorf("tunnel %q not found", oldName)
+		}
+		targetName := oldName
+		if newName != "" && newName != oldName {
+			if _, exists := cfg.Tunnel(newName); exists {
+				return fmt.Errorf("tunnel %q already exists", newName)
+			}
+			targetName = newName
+		}
+		host, port, err := parseLocalEndpoint(localAddr)
+		if err != nil {
+			return err
+		}
+		updated := existing
+		updated.Name = targetName
+		updated.LocalHost = host
+		updated.LocalPort = port
+		updated.Enabled = existing.Enabled
+		updated.Disabled = existing.Disabled
+		if opts.SSHKeySet {
+			updated.SSHKey = opts.Build.SSHKey
+		}
+		if opts.RemotePortSet {
+			updated.RemotePort = opts.Build.RemotePort
+		}
+		if opts.RemoteServerSet {
+			updated.RemoteServer = opts.Build.RemoteServer
+		}
+		if opts.LocalProtocolSet {
+			switch opts.Build.LocalProtocol {
+			case "", "http":
+				updated.LocalProtocol = ""
+			default:
+				updated.LocalProtocol = opts.Build.LocalProtocol
+			}
+		}
+		if !cfg.UpdateTunnel(oldName, updated) {
+			return fmt.Errorf("tunnel %q not found", oldName)
+		}
 		return nil
 	}, paths.socketPath)
 }
@@ -363,6 +420,52 @@ func parseTunnelBuildArgs(args []string) (pathConfig, string, string, addOptions
 	return pathConfig{configPath: *configPath, socketPath: *socketPath}, rest[0], rest[1], opts, nil
 }
 
+func parseTunnelUpdateArgs(args []string) (pathConfig, string, string, string, addOptions, error) {
+	fs := flag.NewFlagSet("sishc update", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
+	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
+	sshKey := fs.String("ssh-key", "", "override ssh key")
+	remotePort := fs.Int("remote-port", 0, "override remote port")
+	remoteServer := fs.String("remote-server", "", "override remote server")
+	localProtocol := fs.String("local-protocol", "", "local protocol (http, tcp, or https)")
+	if err := fs.Parse(args); err != nil {
+		return pathConfig{}, "", "", "", addOptions{}, err
+	}
+	rest := fs.Args()
+	if len(rest) != 2 && len(rest) != 3 {
+		return pathConfig{}, "", "", "", addOptions{}, fmt.Errorf("usage: sishc update [flags] <name> [<new-name>] <local_host>:<local_port>")
+	}
+	oldName := rest[0]
+	newName := ""
+	localAddr := rest[1]
+	if len(rest) == 3 {
+		newName = rest[1]
+		localAddr = rest[2]
+	}
+	protocol := strings.TrimSpace(strings.ToLower(*localProtocol))
+	if protocol != "" && protocol != "tcp" && protocol != "https" && protocol != "http" {
+		return pathConfig{}, "", "", "", addOptions{}, fmt.Errorf("--local-protocol must be tcp, https, or http")
+	}
+	visited := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+	})
+	opts := addOptions{
+		Build: config.TunnelBuildOptions{
+			SSHKey:        *sshKey,
+			LocalProtocol: protocol,
+			RemotePort:    *remotePort,
+			RemoteServer:  *remoteServer,
+		},
+		SSHKeySet:        visited["ssh-key"],
+		RemotePortSet:    visited["remote-port"],
+		RemoteServerSet:  visited["remote-server"],
+		LocalProtocolSet: visited["local-protocol"],
+	}
+	return pathConfig{configPath: *configPath, socketPath: *socketPath}, oldName, newName, localAddr, opts, nil
+}
+
 func parseTunnelToggleArgs(args []string) (pathConfig, string, error) {
 	fs := flag.NewFlagSet("sishc toggle", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -403,6 +506,19 @@ func parseOneoffArgs(args []string) (string, string, string, config.TunnelBuildO
 		RemotePort:    *remotePort,
 		RemoteServer:  *remoteServer,
 	}, nil
+}
+
+func parseLocalEndpoint(localAddr string) (string, int, error) {
+	localAddr = strings.TrimSpace(localAddr)
+	host, portStr, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid local host:port %q", localAddr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid local port %q", portStr)
+	}
+	return host, port, nil
 }
 
 func editConfig(configPath string, mutate func(*config.Config) error, socketPath string) error {
@@ -624,7 +740,8 @@ func usageText() string {
   sishc status [--socket PATH]
   sishc validate [--config PATH]
   sishc reconcile [--socket PATH]
-	sishc add [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
+  sishc add [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
+  sishc update [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> [<new-name>] <local_host>:<local_port>
   sishc remove [--config PATH] [--socket PATH] <name>
   sishc start [--config PATH] [--socket PATH] <name>
   sishc stop [--config PATH] [--socket PATH] <name>
@@ -636,7 +753,8 @@ Commands:
   status      Query live daemon status
   validate    Validate config and exit
   reconcile   Force a live reconcile on the daemon
-  add         Add or update a tunnel in config and reconcile
+  add         Add a new tunnel in config and reconcile
+  update      Update an existing tunnel in config and reconcile
   remove      Remove a tunnel from config and reconcile
   start       Enable a tunnel in config and reconcile
   stop        Disable a tunnel in config and reconcile
@@ -648,6 +766,7 @@ Config builder rules:
   - local_host and local_port can be supplied globally or inline as <local_host>:<local_port>
   - local_protocol defaults to http
   - local_protocol tcp or https can be set globally or per tunnel
+  - add fails if the tunnel already exists; update edits an existing tunnel and can rename it
   - start/stop write enabled true/false in config; disabled remains a legacy fallback on read
   - oneoff can run without a config file if the required values are supplied by flags
   - daemon will offer init automatically when run interactively and the config file is missing

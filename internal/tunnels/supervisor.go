@@ -53,12 +53,12 @@ type Supervisor struct {
 	launch  Launcher
 	logger  *log.Logger
 
-	mu        sync.Mutex
+	mu          sync.Mutex
 	reconcileMu sync.Mutex
-	status    map[string]Status
-	processes map[string]trackedProcess
-	stopping  map[string]Status
-	lastMod   time.Time
+	status      map[string]Status
+	processes   map[string]trackedProcess
+	stopping    map[string]Status
+	lastMod     time.Time
 }
 
 type trackedProcess struct {
@@ -179,6 +179,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	restartLater := make(map[string]struct{})
 
 	for name, current := range s.processes {
 		tunnel, ok := desired[name]
@@ -202,6 +203,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				LastExitCode: 0,
 			})
 		case current.spec != tunnelSpec(tunnel):
+			restartLater[name] = struct{}{}
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateStopped,
@@ -223,6 +225,9 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		current, ok := s.processes[name]
 		if ok && current.spec == spec {
 			s.setStatusLocked(name, StateRunning, "running", current.command, 0)
+			continue
+		}
+		if _, pending := restartLater[name]; pending {
 			continue
 		}
 
@@ -265,6 +270,13 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		if _, ok := desired[name]; !ok {
 			delete(s.status, name)
 		}
+	}
+
+	if len(restartLater) > 0 {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			_ = s.ReconcileNow(context.Background())
+		}()
 	}
 
 	return nil

@@ -288,6 +288,16 @@ func (c *Config) RemoveTunnel(name string) bool {
 	return false
 }
 
+func (c *Config) UpdateTunnel(name string, updated Tunnel) bool {
+	for i := range c.Tunnels {
+		if c.Tunnels[i].Name == name {
+			c.Tunnels[i] = updated
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Config) SetTunnelDisabled(name string, disabled bool) bool {
 	return c.SetTunnelEnabled(name, !disabled)
 }

@@ -3,8 +3,8 @@ package tunnels
 import (
 	"bytes"
 	"context"
-	"log"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -250,11 +250,11 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 
 	s := NewSupervisor(cfgPath, logPath, launcher)
 	initial := config.Config{
-		SSHKey:       "id_rsa",
-		LocalHost:    "localhost",
+		SSHKey:        "id_rsa",
+		LocalHost:     "localhost",
 		LocalProtocol: "http",
-		RemotePort:   2222,
-		RemoteServer: "example.com",
+		RemotePort:    2222,
+		RemoteServer:  "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
 		},
@@ -285,8 +285,15 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("ReconcileNow() error = %v", err)
 	}
-	if launchCount != 2 {
-		t.Fatalf("launchCount = %d, want 2", launchCount)
+	deadline := time.Now().Add(time.Second)
+	for {
+		if launchCount == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("launchCount = %d, want 2", launchCount)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	st, ok := s.StatusFor("one")
 	if !ok {
@@ -315,11 +322,11 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 
 	s := NewSupervisor(cfgPath, logPath, launcher)
 	initial := config.Config{
-		SSHKey:       "id_rsa",
-		LocalHost:    "localhost",
+		SSHKey:        "id_rsa",
+		LocalHost:     "localhost",
 		LocalProtocol: "http",
-		RemotePort:   2222,
-		RemoteServer: "example.com",
+		RemotePort:    2222,
+		RemoteServer:  "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "test231", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
 		},
@@ -354,11 +361,18 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("ReconcileNow() error = %v", err)
 	}
-	if launchCount != 2 {
-		t.Fatalf("launchCount = %d, want 2", launchCount)
+	deadline := time.Now().Add(time.Second)
+	for {
+		if launchCount == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("launchCount = %d, want 2", launchCount)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
-	deadline := time.Now().Add(time.Second)
+	deadline = time.Now().Add(time.Second)
 	for {
 		stOld, ok := s.StatusFor("test231")
 		if ok && stOld.State == StateStopped {
