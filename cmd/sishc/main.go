@@ -49,6 +49,8 @@ func main() {
 		err = runValidate(args)
 	case "reconcile":
 		err = runReconcile(args)
+	case "logs":
+		err = runLogs(ctx, args)
 	case "add":
 		err = runAdd(args)
 	case "update":
@@ -215,6 +217,24 @@ func runReconcile(args []string) error {
 	return nil
 }
 
+func runLogs(ctx context.Context, args []string) error {
+	name, follow, tail, paths, err := parseLogsArgs(args)
+	if err != nil {
+		return err
+	}
+	logPath := filepath.Join(paths.logDir, "daemon.log")
+	if name != "daemon" {
+		logPath = filepath.Join(paths.logDir, logFileName(name)+".log")
+	}
+	if err := printLogTail(logPath, tail, os.Stdout); err != nil {
+		return err
+	}
+	if !follow {
+		return nil
+	}
+	return followLogFile(ctx, logPath, os.Stdout)
+}
+
 func parseStatusArgs(args []string) (string, bool, pathConfig, error) {
 	fs := flag.NewFlagSet("sishc status", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -237,6 +257,27 @@ func parseStatusArgs(args []string) (string, bool, pathConfig, error) {
 		configPath: *configPath,
 		logDir:     *logDir,
 		socketPath: *socketPath,
+	}, nil
+}
+
+func parseLogsArgs(args []string) (string, bool, int, pathConfig, error) {
+	fs := flag.NewFlagSet("sishc logs", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	logDir := fs.String("log-dir", config.DefaultLogDir(), "log directory path")
+	follow := fs.Bool("follow", false, "follow log updates")
+	tail := fs.Int("tail", 50, "number of lines to show")
+	if err := fs.Parse(args); err != nil {
+		return "", false, 0, pathConfig{}, err
+	}
+	rest := fs.Args()
+	if len(rest) != 1 {
+		return "", false, 0, pathConfig{}, fmt.Errorf("usage: sishc logs [--tail N] [--follow] <name|daemon>")
+	}
+	if *tail < 0 {
+		return "", false, 0, pathConfig{}, fmt.Errorf("--tail must be >= 0")
+	}
+	return rest[0], *follow, *tail, pathConfig{
+		logDir: *logDir,
 	}, nil
 }
 
@@ -285,6 +326,108 @@ func printableIntField(value int) string {
 		return "-"
 	}
 	return strconv.Itoa(value)
+}
+
+func printLogTail(path string, tail int, out io.Writer) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := splitLogLines(string(data))
+	start := len(lines) - tail
+	if start < 0 {
+		start = 0
+	}
+	for _, line := range lines[start:] {
+		fmt.Fprintln(out, line)
+	}
+	return nil
+}
+
+func followLogFile(ctx context.Context, path string, out io.Writer) error {
+	offset := int64(0)
+	for {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(500 * time.Millisecond):
+					continue
+				}
+			}
+			return err
+		}
+		if info.Size() < offset {
+			offset = 0
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			_ = file.Close()
+			return err
+		}
+		reader := bufio.NewReader(file)
+		for {
+			line, err := reader.ReadString('\n')
+			if len(line) > 0 {
+				fmt.Fprint(out, line)
+				offset += int64(len(line))
+			}
+			if err == nil {
+				continue
+			}
+			if err != io.EOF {
+				_ = file.Close()
+				return err
+			}
+			_ = file.Close()
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+func splitLogLines(data string) []string {
+	data = strings.ReplaceAll(data, "\r\n", "\n")
+	data = strings.TrimSuffix(data, "\n")
+	if strings.TrimSpace(data) == "" {
+		return nil
+	}
+	return strings.Split(data, "\n")
+}
+
+func logFileName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "tunnel"
+	}
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	if b.Len() == 0 {
+		return "tunnel"
+	}
+	return b.String()
 }
 
 func sortStatuses(statuses []tunnels.Status) {
@@ -1046,6 +1189,7 @@ func usageText() string {
 Commands:
   daemon     Run the tunnel supervisor and control socket
   status     Show tunnel status
+  logs       Show daemon or tunnel logs
   validate   Validate config and exit
   reconcile  Reconcile config now
   add        Create a tunnel entry
@@ -1070,6 +1214,8 @@ Tunnel flags:
 Special forms:
   add:         [tunnel flags] <name> [<local_host>][:<local_port>]
   update:      [tunnel flags] [--new-name NAME] <name> [<local_host>][:<local_port>]
+  status:      [--verbose] [<name>]
+  logs:        [--tail N] [--follow] <name|daemon>
   oneoff:      [tunnel flags] [<name>] [<local_host>:]<local_port>
 
 Notes:
@@ -1077,9 +1223,6 @@ Notes:
     - omit both host and port to use globals
     - host only uses global port
     - :port or port only uses global host
-  status:
-    - --verbose adds detail to the table
-    - <name> shows one tunnel in detail
   oneoff:
     - no name => random subdomain
     - port only => host defaults to 127.0.0.1

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -459,6 +461,37 @@ func TestParseStatusArgsSupportsVerboseAndName(t *testing.T) {
 	}
 	if verbose {
 		t.Fatal("verbose = true, want false")
+	}
+}
+
+func TestParseLogsArgsSupportsFollowTailAndDaemon(t *testing.T) {
+	name, follow, tail, _, err := parseLogsArgs([]string{"--follow", "--tail", "10", "daemon"})
+	if err != nil {
+		t.Fatalf("parseLogsArgs() error = %v", err)
+	}
+	if name != "daemon" {
+		t.Fatalf("name = %q, want daemon", name)
+	}
+	if !follow {
+		t.Fatal("follow = false, want true")
+	}
+	if tail != 10 {
+		t.Fatalf("tail = %d, want 10", tail)
+	}
+}
+
+func TestPrintLogTailPrintsLastLines(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.log")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	var buf bytes.Buffer
+	if err := printLogTail(path, 2, &buf); err != nil {
+		t.Fatalf("printLogTail() error = %v", err)
+	}
+	if got := buf.String(); got != "two\nthree\n" {
+		t.Fatalf("printLogTail() = %q, want %q", got, "two\nthree\n")
 	}
 }
 
