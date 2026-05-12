@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -51,12 +55,17 @@ func main() {
 		err = runStop(args)
 	case "oneoff":
 		err = runOneoff(ctx, args)
+	case "init":
+		err = runInit(ctx, args, os.Stdin, os.Stdout)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
 		log.Fatalf("unknown command %q\n\n%s", cmd, usageText())
 	}
 	if err != nil {
+		if err == context.Canceled {
+			return
+		}
 		log.Fatal(err)
 	}
 }
@@ -68,10 +77,26 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 	cfg, err := config.Load(paths.configPath)
 	if err != nil {
-		log.Printf("config load error: %v", err)
+		if os.IsNotExist(err) && isInteractive(os.Stdin) {
+			fmt.Fprintf(os.Stdout, "No valid config at %s.\n", paths.configPath)
+			yes, err := promptYesNo(ctx, os.Stdin, os.Stdout, "Create one now?")
+			if err != nil {
+				return err
+			}
+			if !yes {
+				return fmt.Errorf("no valid config at %s; run `sishc init --config %s`", paths.configPath, paths.configPath)
+			}
+			if err := runInit(ctx, []string{"--config", paths.configPath}, os.Stdin, os.Stdout); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stdout, "Starting daemon with %s\n", paths.configPath)
+			cfg, err = config.Load(paths.configPath)
+		} else {
+			return fmt.Errorf("config %q not found; run `sishc init --config %s`", paths.configPath, paths.configPath)
+		}
 	}
 	if err := cfg.Validate(); err != nil {
-		log.Printf("config validation error: %v", err)
+		return fmt.Errorf("config validation error: %w", err)
 	}
 
 	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logPath, nil)
@@ -204,6 +229,14 @@ func runStop(args []string) error {
 	}, paths.socketPath)
 }
 
+func runInit(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
+	configPath, err := parseInitPath(args)
+	if err != nil {
+		return err
+	}
+	return initConfig(ctx, configPath, in, out)
+}
+
 func runOneoff(ctx context.Context, args []string) error {
 	cfgPath, name, localAddr, opts, err := parseOneoffArgs(args)
 	if err != nil {
@@ -251,6 +284,19 @@ func parseConfigPath(args []string) (string, error) {
 	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
 	if err := fs.Parse(args); err != nil {
 		return "", err
+	}
+	return *configPath, nil
+}
+
+func parseInitPath(args []string) (string, error) {
+	fs := flag.NewFlagSet("sishc init", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
+	if err := fs.Parse(args); err != nil {
+		return "", err
+	}
+	if len(fs.Args()) != 0 {
+		return "", fmt.Errorf("usage: sishc init [--config PATH]")
 	}
 	return *configPath, nil
 }
@@ -345,6 +391,191 @@ func editConfig(configPath string, mutate func(*config.Config) error, socketPath
 	return nil
 }
 
+func initConfig(ctx context.Context, configPath string, in io.Reader, out io.Writer) error {
+	if _, err := os.Stat(configPath); err == nil {
+		return fmt.Errorf("config %q already exists; use --config to choose another path", configPath)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	cfg := config.Config{}
+	fmt.Fprintf(out, "Initializing config at %s\n", configPath)
+
+	var err error
+	cfg.SSHKey, err = promptRequired(ctx, in, out, "SSH key (required)", defaultSSHKey(), defaultSSHKey())
+	if err != nil {
+		return err
+	}
+	cfg.RemotePort, err = promptRequiredInt(ctx, in, out, "Remote port (required)")
+	if err != nil {
+		return err
+	}
+	cfg.RemoteServer, err = promptRequired(ctx, in, out, "Remote server (required)", "", "")
+	if err != nil {
+		return err
+	}
+	cfg.LocalHost, err = promptOptional(ctx, in, out, "Global local host (optional)", "", "")
+	if err != nil {
+		return err
+	}
+	cfg.LocalPort, err = promptOptionalInt(ctx, in, out, "Global local port (optional)")
+	if err != nil {
+		return err
+	}
+	var protocol string
+	protocol, err = promptOptional(ctx, in, out, "Global local protocol (optional)", "http", "http")
+	if err != nil {
+		return err
+	}
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	switch protocol {
+	case "", "http":
+		cfg.LocalProtocol = ""
+	case "tcp", "https":
+		cfg.LocalProtocol = protocol
+	default:
+		return fmt.Errorf("invalid local protocol %q", protocol)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := config.Save(configPath, cfg); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Wrote %s\n", configPath)
+	return nil
+}
+
+func promptRequired(ctx context.Context, in io.Reader, out io.Writer, label, defaultValue, hint string) (string, error) {
+	for {
+		value, err := promptOptional(ctx, in, out, label, defaultValue, hint)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(value) != "" {
+			return value, nil
+		}
+		fmt.Fprintln(out, "Value is required.")
+	}
+}
+
+func promptOptional(ctx context.Context, in io.Reader, out io.Writer, label, defaultValue, hint string) (string, error) {
+	switch {
+	case hint != "":
+		fmt.Fprintf(out, "%s [%s]: ", label, hint)
+	case defaultValue != "":
+		fmt.Fprintf(out, "%s [%s]: ", label, defaultValue)
+	default:
+		fmt.Fprintf(out, "%s: ", label)
+	}
+	line, err := readLine(ctx, in)
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(line)
+	if value == "" {
+		return defaultValue, nil
+	}
+	return value, nil
+}
+
+func promptRequiredInt(ctx context.Context, in io.Reader, out io.Writer, label string) (int, error) {
+	for {
+		value, err := promptOptional(ctx, in, out, label, "", "")
+		if err != nil {
+			return 0, err
+		}
+		n, err := parseIntValue(value)
+		if err == nil && n > 0 {
+			return n, nil
+		}
+		fmt.Fprintln(out, "Enter a number between 1 and 65535.")
+	}
+}
+
+func promptOptionalInt(ctx context.Context, in io.Reader, out io.Writer, label string) (int, error) {
+	for {
+		value, err := promptOptional(ctx, in, out, label, "", "")
+		if err != nil {
+			return 0, err
+		}
+		if strings.TrimSpace(value) == "" {
+			return 0, nil
+		}
+		n, err := parseIntValue(value)
+		if err == nil && n > 0 {
+			return n, nil
+		}
+		fmt.Fprintln(out, "Enter a number between 1 and 65535, or leave blank.")
+	}
+}
+
+func parseIntValue(value string) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(value))
+}
+
+func defaultSSHKey() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".ssh", "id_rsa")
+	}
+	return ""
+}
+
+func isInteractive(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func promptYesNo(ctx context.Context, in io.Reader, out io.Writer, question string) (bool, error) {
+	for {
+		fmt.Fprintf(out, "%s [Y/n]: ", question)
+		answer, err := readLine(ctx, in)
+		if err != nil {
+			return false, err
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "" {
+			return true, nil
+		}
+		switch answer {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Fprintln(out, "Please answer yes or no.")
+		}
+	}
+}
+
+func readLine(ctx context.Context, in io.Reader) (string, error) {
+	type result struct {
+		line string
+		err  error
+	}
+
+	ch := make(chan result, 1)
+	go func() {
+		reader := bufio.NewReader(in)
+		line, err := reader.ReadString('\n')
+		ch <- result{line: line, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case res := <-ch:
+		if res.err != nil {
+			return "", res.err
+		}
+		return res.line, nil
+	}
+}
+
 func printUsage() {
 	fmt.Println(usageText())
 }
@@ -355,11 +586,12 @@ func usageText() string {
   sishc status [--socket PATH]
   sishc validate [--config PATH]
   sishc reconcile [--socket PATH]
-  sishc add [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
+	sishc add [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
   sishc remove [--config PATH] [--socket PATH] <name>
   sishc start [--config PATH] [--socket PATH] <name>
   sishc stop [--config PATH] [--socket PATH] <name>
   sishc oneoff [--config PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
+  sishc init [--config PATH]
 
 Commands:
   daemon      Run the tunnel supervisor and control socket
@@ -371,6 +603,7 @@ Commands:
   start       Enable a tunnel in config and reconcile
   stop        Disable a tunnel in config and reconcile
   oneoff      Run a temporary tunnel without writing config
+  init        Create a new config interactively
 
 Config builder rules:
   - ssh_key, remote_port, and remote_server are required globally or via add/oneoff overrides
@@ -379,5 +612,6 @@ Config builder rules:
   - local_protocol tcp or https can be set globally or per tunnel
   - start/stop only toggle disabled in config; add/remove change tunnel entries
   - oneoff can run without a config file if the required values are supplied by flags
+  - daemon will offer init automatically when run interactively and the config file is missing
 `
 }
