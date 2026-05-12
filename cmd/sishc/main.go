@@ -216,7 +216,7 @@ func runAdd(args []string) error {
 		if err != nil {
 			return err
 		}
-		tunnel, err := config.BuildTunnel(name, resolvedLocal.effective, *cfg, opts.Build)
+		tunnel, err := config.BuildTunnel(name, net.JoinHostPort(resolvedLocal.host, strconv.Itoa(resolvedLocal.port)), *cfg, opts.Build)
 		if err != nil {
 			return err
 		}
@@ -264,14 +264,18 @@ func runUpdate(args []string) error {
 			}
 			targetName = newName
 		}
-		host, port, err := parseLocalEndpoint(localAddr)
+		resolvedLocal, err := resolveUpdateLocalEndpoint(localAddr, existing)
 		if err != nil {
 			return err
 		}
 		updated := existing
 		updated.Name = targetName
-		updated.LocalHost = host
-		updated.LocalPort = port
+		if resolvedLocal.hostExplicit {
+			updated.LocalHost = resolvedLocal.host
+		}
+		if resolvedLocal.portExplicit {
+			updated.LocalPort = resolvedLocal.port
+		}
 		updated.Enabled = existing.Enabled
 		updated.Disabled = existing.Disabled
 		if opts.SSHKeySet {
@@ -387,7 +391,8 @@ type addOptions struct {
 }
 
 type localResolution struct {
-	effective    string
+	host         string
+	port         int
 	hostExplicit bool
 	portExplicit bool
 }
@@ -479,6 +484,7 @@ func parseTunnelUpdateArgs(args []string) (pathConfig, string, string, string, a
 	fs.SetOutput(os.Stderr)
 	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
 	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
+	newName := fs.String("new-name", "", "rename tunnel")
 	sshKey := fs.String("ssh-key", "", "override ssh key")
 	remotePort := fs.Int("remote-port", 0, "override remote port")
 	remoteServer := fs.String("remote-server", "", "override remote server")
@@ -487,15 +493,13 @@ func parseTunnelUpdateArgs(args []string) (pathConfig, string, string, string, a
 		return pathConfig{}, "", "", "", addOptions{}, err
 	}
 	rest := fs.Args()
-	if len(rest) != 2 && len(rest) != 3 {
-		return pathConfig{}, "", "", "", addOptions{}, fmt.Errorf("usage: sishc update [flags] <name> [<new-name>] <local_host>:<local_port>")
+	if len(rest) != 1 && len(rest) != 2 {
+		return pathConfig{}, "", "", "", addOptions{}, fmt.Errorf("usage: sishc update [flags] <name> [<local_host>:]<local_port>")
 	}
 	oldName := rest[0]
-	newName := ""
-	localAddr := rest[1]
-	if len(rest) == 3 {
-		newName = rest[1]
-		localAddr = rest[2]
+	localAddr := ""
+	if len(rest) == 2 {
+		localAddr = rest[1]
 	}
 	protocol := strings.TrimSpace(strings.ToLower(*localProtocol))
 	if protocol != "" && protocol != "tcp" && protocol != "https" && protocol != "http" {
@@ -517,7 +521,7 @@ func parseTunnelUpdateArgs(args []string) (pathConfig, string, string, string, a
 		RemoteServerSet:  visited["remote-server"],
 		LocalProtocolSet: visited["local-protocol"],
 	}
-	return pathConfig{configPath: *configPath, socketPath: *socketPath}, oldName, newName, localAddr, opts, nil
+	return pathConfig{configPath: *configPath, socketPath: *socketPath}, oldName, *newName, localAddr, opts, nil
 }
 
 func parseTunnelToggleArgs(args []string) (pathConfig, string, error) {
@@ -577,7 +581,8 @@ func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResoluti
 			return localResolution{}, fmt.Errorf("local_host and local_port are required")
 		}
 		return localResolution{
-			effective:    net.JoinHostPort(cfg.LocalHost, strconv.Itoa(cfg.LocalPort)),
+			host:         cfg.LocalHost,
+			port:         cfg.LocalPort,
 			hostExplicit: false,
 			portExplicit: false,
 		}, nil
@@ -588,7 +593,8 @@ func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResoluti
 				return localResolution{}, fmt.Errorf("local_host is required")
 			}
 			return localResolution{
-				effective:    net.JoinHostPort(cfg.LocalHost, strconv.Itoa(n)),
+				host:         cfg.LocalHost,
+				port:         n,
 				hostExplicit: false,
 				portExplicit: true,
 			}, nil
@@ -597,7 +603,8 @@ func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResoluti
 			return localResolution{}, fmt.Errorf("local_port is required")
 		}
 		return localResolution{
-			effective:    net.JoinHostPort(localAddr, strconv.Itoa(cfg.LocalPort)),
+			host:         localAddr,
+			port:         cfg.LocalPort,
 			hostExplicit: true,
 			portExplicit: false,
 		}, nil
@@ -606,6 +613,10 @@ func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResoluti
 	host, portStr, err := net.SplitHostPort(localAddr)
 	if err != nil {
 		return localResolution{}, fmt.Errorf("invalid local host:port %q", localAddr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return localResolution{}, fmt.Errorf("invalid local port %q", portStr)
 	}
 	hostExplicit := strings.TrimSpace(host) != ""
 	portExplicit := strings.TrimSpace(portStr) != ""
@@ -621,11 +632,60 @@ func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResoluti
 		}
 		portStr = strconv.Itoa(cfg.LocalPort)
 	}
-	if _, err := strconv.Atoi(portStr); err != nil {
+	return localResolution{
+		host:         host,
+		port:         port,
+		hostExplicit: hostExplicit,
+		portExplicit: portExplicit,
+	}, nil
+}
+
+func resolveUpdateLocalEndpoint(localAddr string, existing config.Tunnel) (localResolution, error) {
+	localAddr = strings.TrimSpace(localAddr)
+	if localAddr == "" {
+		return localResolution{
+			host:         existing.LocalHost,
+			port:         existing.LocalPort,
+			hostExplicit: false,
+			portExplicit: false,
+		}, nil
+	}
+	if strings.Count(localAddr, ":") == 0 {
+		if n, err := strconv.Atoi(localAddr); err == nil {
+			return localResolution{
+				host:         existing.LocalHost,
+				port:         n,
+				hostExplicit: false,
+				portExplicit: true,
+			}, nil
+		}
+		return localResolution{
+			host:         localAddr,
+			port:         existing.LocalPort,
+			hostExplicit: true,
+			portExplicit: false,
+		}, nil
+	}
+
+	host, portStr, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return localResolution{}, fmt.Errorf("invalid local host:port %q", localAddr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
 		return localResolution{}, fmt.Errorf("invalid local port %q", portStr)
 	}
+	hostExplicit := strings.TrimSpace(host) != ""
+	portExplicit := strings.TrimSpace(portStr) != ""
+	if !hostExplicit {
+		host = existing.LocalHost
+	}
+	if !portExplicit {
+		port = existing.LocalPort
+	}
 	return localResolution{
-		effective:    net.JoinHostPort(host, portStr),
+		host:         host,
+		port:         port,
 		hostExplicit: hostExplicit,
 		portExplicit: portExplicit,
 	}, nil
@@ -895,13 +955,17 @@ Tunnel flags:
   --local-protocol tcp|https
 
 Special forms:
-  add:         [tunnel flags] <name> [<local_host>:]<local_port>
-  add:         no addr => use global host/port
-  add:         host only => use global port
-  add:         :port or port only => use global host
-  update:      [tunnel flags] <name> [<new-name>] <local_host>:<local_port>
+  add:         [tunnel flags] <name> [<local_host>][:<local_port>]
+  update:      [tunnel flags] [--new-name NAME] <name> [<local_host>][:<local_port>]
   oneoff:      [tunnel flags] [<name>] [<local_host>:]<local_port>
-  oneoff:      no name => random subdomain
-  oneoff:      only port => host defaults to 127.0.0.1
+
+Notes:
+  add/update:
+    - omit both host and port to use globals
+    - host only uses global port
+    - :port or port only uses global host
+  oneoff:
+    - no name => random subdomain
+    - port only => host defaults to 127.0.0.1
 `
 }

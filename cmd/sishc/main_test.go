@@ -235,7 +235,7 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	if err := runUpdate([]string{"--config", path, "--remote-port", "1666", "old", "new", "127.0.0.1:6081"}); err != nil {
+	if err := runUpdate([]string{"--config", path, "--new-name", "new", "--remote-port", "1666", "old", "127.0.0.1:6081"}); err != nil {
 		t.Fatalf("runUpdate() error = %v", err)
 	}
 
@@ -264,6 +264,139 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 	}
 	if tunnel.Enabled == nil || !*tunnel.Enabled {
 		t.Fatalf("tunnel.Enabled = %+v, want true", tunnel.Enabled)
+	}
+}
+
+func TestRunUpdateKeepsExistingLocalEndpointWhenOmitted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalHost:    "127.0.0.1",
+		LocalPort:    8088,
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+		Tunnels: []config.Tunnel{
+			{
+				Name:         "old",
+				LocalHost:    "localhost",
+				LocalPort:    6080,
+				RemotePort:   1555,
+				RemoteServer: "old.example.com",
+				Enabled:      boolPtr(true),
+			},
+		},
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runUpdate([]string{"--config", path, "old"}); err != nil {
+		t.Fatalf("runUpdate() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "localhost" || tunnel.LocalPort != 6080 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want preserved localhost:6080", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
+func TestRunUpdateUsesExistingHostWhenOnlyPortSpecified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalHost:    "127.0.0.1",
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+		Tunnels: []config.Tunnel{
+			{
+				Name:         "old",
+				LocalHost:    "localhost",
+				LocalPort:    6080,
+				RemotePort:   1555,
+				RemoteServer: "old.example.com",
+				Enabled:      boolPtr(true),
+			},
+		},
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runUpdate([]string{"--config", path, "old", ":443"}); err != nil {
+		t.Fatalf("runUpdate() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "localhost" || tunnel.LocalPort != 443 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want preserved host and port 443", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
+func TestRunUpdateUsesExistingPortWhenOnlyHostSpecified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalPort:    8088,
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+		Tunnels: []config.Tunnel{
+			{
+				Name:         "old",
+				LocalHost:    "localhost",
+				LocalPort:    6080,
+				RemotePort:   1555,
+				RemoteServer: "old.example.com",
+				Enabled:      boolPtr(true),
+			},
+		},
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runUpdate([]string{"--config", path, "old", "example_host"}); err != nil {
+		t.Fatalf("runUpdate() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "example_host" || tunnel.LocalPort != 6080 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want example_host:6080", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
+func TestParseUpdateArgsSupportsNewNameAndShorthand(t *testing.T) {
+	_, oldName, newName, localAddr, _, err := parseTunnelUpdateArgs([]string{"--new-name", "new", "old", "example_host"})
+	if err != nil {
+		t.Fatalf("parseTunnelUpdateArgs() error = %v", err)
+	}
+	if oldName != "old" || newName != "new" || localAddr != "example_host" {
+		t.Fatalf("parseTunnelUpdateArgs() = %q %q %q", oldName, newName, localAddr)
+	}
+
+	_, oldName, newName, localAddr, _, err = parseTunnelUpdateArgs([]string{"old", ":443"})
+	if err != nil {
+		t.Fatalf("parseTunnelUpdateArgs() error = %v", err)
+	}
+	if oldName != "old" || newName != "" || localAddr != ":443" {
+		t.Fatalf("parseTunnelUpdateArgs() = %q %q %q", oldName, newName, localAddr)
 	}
 }
 
