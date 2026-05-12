@@ -60,6 +60,91 @@ func TestRunAddPersistsExplicitRemotePortAndLeavesOtherFieldsSparse(t *testing.T
 	}
 }
 
+func TestRunAddUsesGlobalLocalEndpointWhenOmitted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalHost:    "127.0.0.1",
+		LocalPort:    8088,
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runAdd([]string{"--config", path, "test"}); err != nil {
+		t.Fatalf("runAdd() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "" || tunnel.LocalPort != 0 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want sparse", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
+func TestRunAddUsesGlobalPortWhenOnlyHostSpecified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalPort:    8088,
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runAdd([]string{"--config", path, "test", "example_host"}); err != nil {
+		t.Fatalf("runAdd() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "example_host" || tunnel.LocalPort != 0 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want example_host:0 sparse port", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
+func TestRunAddUsesGlobalHostWhenOnlyPortSpecified(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	initial := config.Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		LocalHost:    "127.0.0.1",
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+	}
+	if err := config.Save(path, initial); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	if err := runAdd([]string{"--config", path, "test", ":443"}); err != nil {
+		t.Fatalf("runAdd() error = %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	tunnel := got.Tunnels[0]
+	if tunnel.LocalHost != "" || tunnel.LocalPort != 443 {
+		t.Fatalf("tunnel local endpoint = %s:%d, want sparse host and port 443", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
 func TestRunAddLeavesRemotePortForGlobalFallbackWhenOmitted(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

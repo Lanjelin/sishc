@@ -212,15 +212,23 @@ func runAdd(args []string) error {
 		if _, exists := cfg.Tunnel(name); exists {
 			return fmt.Errorf("tunnel %q already exists", name)
 		}
-		tunnel, err := config.BuildTunnel(name, localAddr, *cfg, opts.Build)
+		resolvedLocal, err := resolveAddLocalEndpoint(localAddr, *cfg)
+		if err != nil {
+			return err
+		}
+		tunnel, err := config.BuildTunnel(name, resolvedLocal.effective, *cfg, opts.Build)
 		if err != nil {
 			return err
 		}
 		sparse := config.Tunnel{
-			Name:      tunnel.Name,
-			LocalHost: tunnel.LocalHost,
-			LocalPort: tunnel.LocalPort,
-			Enabled:   boolPtr(true),
+			Name:    tunnel.Name,
+			Enabled: boolPtr(true),
+		}
+		if resolvedLocal.hostExplicit {
+			sparse.LocalHost = tunnel.LocalHost
+		}
+		if resolvedLocal.portExplicit {
+			sparse.LocalPort = tunnel.LocalPort
 		}
 		if opts.SSHKeySet {
 			sparse.SSHKey = opts.Build.SSHKey
@@ -378,6 +386,12 @@ type addOptions struct {
 	LocalProtocolSet bool
 }
 
+type localResolution struct {
+	effective    string
+	hostExplicit bool
+	portExplicit bool
+}
+
 func parsePaths(args []string) (config.Config, pathConfig, error) {
 	fs := flag.NewFlagSet("sishc", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -430,8 +444,8 @@ func parseTunnelBuildArgs(args []string) (pathConfig, string, string, addOptions
 		return pathConfig{}, "", "", addOptions{}, err
 	}
 	rest := fs.Args()
-	if len(rest) != 2 {
-		return pathConfig{}, "", "", addOptions{}, fmt.Errorf("usage: sishc add [flags] <name> <local_host>:<local_port>")
+	if len(rest) != 1 && len(rest) != 2 {
+		return pathConfig{}, "", "", addOptions{}, fmt.Errorf("usage: sishc add [flags] <name> [<local_host>:]<local_port>")
 	}
 	protocol := strings.TrimSpace(strings.ToLower(*localProtocol))
 	if protocol != "" && protocol != "tcp" && protocol != "https" && protocol != "http" {
@@ -453,7 +467,11 @@ func parseTunnelBuildArgs(args []string) (pathConfig, string, string, addOptions
 		RemoteServerSet:  visited["remote-server"],
 		LocalProtocolSet: visited["local-protocol"],
 	}
-	return pathConfig{configPath: *configPath, socketPath: *socketPath}, rest[0], rest[1], opts, nil
+	localAddr := ""
+	if len(rest) == 2 {
+		localAddr = rest[1]
+	}
+	return pathConfig{configPath: *configPath, socketPath: *socketPath}, rest[0], localAddr, opts, nil
 }
 
 func parseTunnelUpdateArgs(args []string) (pathConfig, string, string, string, addOptions, error) {
@@ -549,6 +567,67 @@ func parseOneoffArgs(args []string) (string, string, string, config.TunnelBuildO
 		LocalProtocol: protocol,
 		RemotePort:    *remotePort,
 		RemoteServer:  *remoteServer,
+	}, nil
+}
+
+func resolveAddLocalEndpoint(localAddr string, cfg config.Config) (localResolution, error) {
+	localAddr = strings.TrimSpace(localAddr)
+	if localAddr == "" {
+		if cfg.LocalHost == "" || cfg.LocalPort == 0 {
+			return localResolution{}, fmt.Errorf("local_host and local_port are required")
+		}
+		return localResolution{
+			effective:    net.JoinHostPort(cfg.LocalHost, strconv.Itoa(cfg.LocalPort)),
+			hostExplicit: false,
+			portExplicit: false,
+		}, nil
+	}
+	if strings.Count(localAddr, ":") == 0 {
+		if n, err := strconv.Atoi(localAddr); err == nil {
+			if cfg.LocalHost == "" {
+				return localResolution{}, fmt.Errorf("local_host is required")
+			}
+			return localResolution{
+				effective:    net.JoinHostPort(cfg.LocalHost, strconv.Itoa(n)),
+				hostExplicit: false,
+				portExplicit: true,
+			}, nil
+		}
+		if cfg.LocalPort == 0 {
+			return localResolution{}, fmt.Errorf("local_port is required")
+		}
+		return localResolution{
+			effective:    net.JoinHostPort(localAddr, strconv.Itoa(cfg.LocalPort)),
+			hostExplicit: true,
+			portExplicit: false,
+		}, nil
+	}
+
+	host, portStr, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return localResolution{}, fmt.Errorf("invalid local host:port %q", localAddr)
+	}
+	hostExplicit := strings.TrimSpace(host) != ""
+	portExplicit := strings.TrimSpace(portStr) != ""
+	if !hostExplicit {
+		if cfg.LocalHost == "" {
+			return localResolution{}, fmt.Errorf("local_host is required")
+		}
+		host = cfg.LocalHost
+	}
+	if !portExplicit {
+		if cfg.LocalPort == 0 {
+			return localResolution{}, fmt.Errorf("local_port is required")
+		}
+		portStr = strconv.Itoa(cfg.LocalPort)
+	}
+	if _, err := strconv.Atoi(portStr); err != nil {
+		return localResolution{}, fmt.Errorf("invalid local port %q", portStr)
+	}
+	return localResolution{
+		effective:    net.JoinHostPort(host, portStr),
+		hostExplicit: hostExplicit,
+		portExplicit: portExplicit,
 	}, nil
 }
 
@@ -816,7 +895,10 @@ Tunnel flags:
   --local-protocol tcp|https
 
 Special forms:
-  add:         [tunnel flags] <name> <local_host>:<local_port>
+  add:         [tunnel flags] <name> [<local_host>:]<local_port>
+  add:         no addr => use global host/port
+  add:         host only => use global port
+  add:         :port or port only => use global host
   update:      [tunnel flags] <name> [<new-name>] <local_host>:<local_port>
   oneoff:      [tunnel flags] [<name>] [<local_host>:]<local_port>
   oneoff:      no name => random subdomain
