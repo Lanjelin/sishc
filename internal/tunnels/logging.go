@@ -120,12 +120,17 @@ func (w *rotatingFile) rotateLocked() error {
 }
 
 type lineFilterWriter struct {
-	w  io.Writer
-	mu sync.Mutex
+	w     io.Writer
+	onURL func(url string, secure bool)
+	mu    sync.Mutex
 }
 
 func newLineFilterWriter(w io.Writer) io.Writer {
-	return &lineFilterWriter{w: w}
+	return newTunnelOutputWriter(w, nil)
+}
+
+func newTunnelOutputWriter(w io.Writer, onURL func(url string, secure bool)) io.Writer {
+	return &lineFilterWriter{w: w, onURL: onURL}
 }
 
 func (w *lineFilterWriter) Write(data []byte) (int, error) {
@@ -138,13 +143,31 @@ func (w *lineFilterWriter) Write(data []byte) (int, error) {
 			continue
 		}
 		if shouldSkipLogLine(line) {
+			if url, secure, ok := parseAssignedURL(line); ok && w.onURL != nil {
+				w.onURL(url, secure)
+			}
 			continue
 		}
 		if _, err := fmt.Fprintln(w.w, line); err != nil {
 			return 0, err
 		}
+		if url, secure, ok := parseAssignedURL(line); ok && w.onURL != nil {
+			w.onURL(url, secure)
+		}
 	}
 	return len(data), nil
+}
+
+func parseAssignedURL(line string) (string, bool, bool) {
+	line = strings.TrimSpace(stripANSI(line))
+	switch {
+	case strings.HasPrefix(line, "HTTPS: "):
+		return strings.TrimSpace(strings.TrimPrefix(line, "HTTPS: ")), true, true
+	case strings.HasPrefix(line, "HTTP: "):
+		return strings.TrimSpace(strings.TrimPrefix(line, "HTTP: ")), false, true
+	default:
+		return "", false, false
+	}
 }
 
 func sanitizeLogFileName(name string) string {

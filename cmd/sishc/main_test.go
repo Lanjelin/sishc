@@ -438,6 +438,30 @@ func TestParseOneoffArgsSupportsRandomSubdomainAndPortOnly(t *testing.T) {
 	}
 }
 
+func TestParseStatusArgsSupportsVerboseAndName(t *testing.T) {
+	name, verbose, _, err := parseStatusArgs([]string{"--verbose", "test1"})
+	if err != nil {
+		t.Fatalf("parseStatusArgs() error = %v", err)
+	}
+	if name != "test1" {
+		t.Fatalf("name = %q, want test1", name)
+	}
+	if !verbose {
+		t.Fatal("verbose = false, want true")
+	}
+
+	name, verbose, _, err = parseStatusArgs([]string{})
+	if err != nil {
+		t.Fatalf("parseStatusArgs() error = %v", err)
+	}
+	if name != "" {
+		t.Fatalf("name = %q, want empty", name)
+	}
+	if verbose {
+		t.Fatal("verbose = true, want false")
+	}
+}
+
 func TestAcquireConfigLockPreventsSecondDaemon(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.yaml")

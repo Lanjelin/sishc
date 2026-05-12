@@ -33,6 +33,9 @@ const (
 type Status struct {
 	Name         string    `json:"name"`
 	State        State     `json:"state"`
+	LocalHost    string    `json:"local_host,omitempty"`
+	LocalPort    int       `json:"local_port,omitempty"`
+	Remote       string    `json:"remote,omitempty"`
 	Detail       string    `json:"detail,omitempty"`
 	Command      []string  `json:"command,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -55,8 +58,10 @@ type Supervisor struct {
 	daemonLog *rotatingFile
 
 	mu          sync.Mutex
+	remoteMu    sync.Mutex
 	reconcileMu sync.Mutex
 	status      map[string]Status
+	remoteURLs  map[string]string
 	processes   map[string]trackedProcess
 	stopping    map[string]Status
 	lastMod     time.Time
@@ -76,13 +81,14 @@ func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 		launch = defaultLauncher
 	}
 	return &Supervisor{
-		cfgPath:   cfgPath,
-		logDir:    logDir,
-		launch:    launch,
-		logger:    log.Default(),
-		status:    make(map[string]Status),
-		processes: make(map[string]trackedProcess),
-		stopping:  make(map[string]Status),
+		cfgPath:    cfgPath,
+		logDir:     logDir,
+		launch:     launch,
+		logger:     log.Default(),
+		status:     make(map[string]Status),
+		remoteURLs: make(map[string]string),
+		processes:  make(map[string]trackedProcess),
+		stopping:   make(map[string]Status),
 	}
 }
 
@@ -150,7 +156,7 @@ func (s *Supervisor) Snapshot() []Status {
 
 	out := make([]Status, 0, len(s.status))
 	for _, st := range s.status {
-		out = append(out, st)
+		out = append(out, s.withRemote(st))
 	}
 	return out
 }
@@ -205,6 +211,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		tunnel, ok := desired[name]
 		switch {
 		case !ok:
+			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateStopped,
@@ -212,8 +219,12 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				Command:      append([]string(nil), current.command...),
 				UpdatedAt:    time.Now().UTC(),
 				LastExitCode: 0,
+				LocalHost:    fields.LocalHost,
+				LocalPort:    fields.LocalPort,
+				Remote:       fields.Remote,
 			})
 		case tunnel.Disabled:
+			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateDisabled,
@@ -221,10 +232,14 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				Command:      append([]string(nil), current.command...),
 				UpdatedAt:    time.Now().UTC(),
 				LastExitCode: 0,
+				LocalHost:    tunnel.LocalHost,
+				LocalPort:    tunnel.LocalPort,
+				Remote:       fields.Remote,
 			})
 		case current.spec != tunnelSpec(tunnel):
 			restartLater[name] = struct{}{}
 			s.lifecyclef("tunnel %s restarting", name)
+			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
 				State:        StateStopped,
@@ -232,6 +247,9 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				Command:      append([]string(nil), current.command...),
 				UpdatedAt:    time.Now().UTC(),
 				LastExitCode: 0,
+				LocalHost:    tunnel.LocalHost,
+				LocalPort:    tunnel.LocalPort,
+				Remote:       fields.Remote,
 			})
 		}
 	}
@@ -239,13 +257,15 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	for name, tunnel := range desired {
 		spec := tunnelSpec(tunnel)
 		if tunnel.Disabled {
-			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0)
+			fields := s.status[name]
+			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
 			continue
 		}
 
 		current, ok := s.processes[name]
 		if ok && current.spec == spec {
-			s.setStatusLocked(name, StateRunning, "running", current.command, 0)
+			fields := s.status[name]
+			s.setStatusLocked(name, StateRunning, "running", current.command, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
 			continue
 		}
 		if _, pending := restartLater[name]; pending {
@@ -256,17 +276,20 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		tCtx, cancel := context.WithCancel(ctx)
 		logWriter, err := s.openTunnelLogWriter(name)
 		if err != nil {
-			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 			s.lifecyclef("errored tunnel %s: %v", name, err)
 			cancel()
 			continue
 		}
 
-		process, command, err := s.launch(tCtx, tunnel, tunnel, logWriter)
+		outputWriter := newTunnelOutputWriter(logWriter, func(url string, secure bool) {
+			s.recordAssignedURL(name, url, secure)
+		})
+		process, command, err := s.launch(tCtx, tunnel, tunnel, outputWriter)
 		if err != nil {
 			_ = logWriter.Close()
 			cancel()
-			s.setStatusLocked(name, StateError, err.Error(), nil, 0)
+			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 			s.lifecyclef("errored tunnel %s: %v", name, err)
 			continue
 		}
@@ -279,7 +302,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			logFile: logWriter,
 			done:    make(chan struct{}),
 		}
-		s.setStatusLocked(name, StateRunning, "running", command, 0)
+		s.setStatusLocked(name, StateRunning, "running", command, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 		s.lifecyclef("tunnel %s started", name)
 		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
 	}
@@ -287,6 +310,9 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	for name := range s.status {
 		if _, ok := desired[name]; !ok {
 			delete(s.status, name)
+			s.remoteMu.Lock()
+			delete(s.remoteURLs, name)
+			s.remoteMu.Unlock()
 		}
 	}
 
@@ -321,13 +347,14 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	if final, ok := s.stopping[name]; ok {
 		delete(s.stopping, name)
 		delete(s.processes, name)
-		s.setStatusLocked(name, final.State, final.Detail, final.Command, final.LastExitCode)
+		s.setStatusLocked(name, final.State, final.Detail, final.Command, final.LastExitCode, final.LocalHost, final.LocalPort, final.Remote)
 		_ = logFile.Close()
 		cancel()
 		return
 	}
 	delete(s.processes, name)
-	s.setStatusLocked(name, state, detail, command, exitCode)
+	fields := s.status[name]
+	s.setStatusLocked(name, state, detail, command, exitCode, fields.LocalHost, fields.LocalPort, fields.Remote)
 	switch state {
 	case StateStopped:
 		s.lifecyclef("tunnel %s stopped", name)
@@ -342,6 +369,7 @@ func (s *Supervisor) stopAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for name, current := range s.processes {
+		fields := s.status[name]
 		_ = s.requestStopLocked(name, current, Status{
 			Name:         name,
 			State:        StateStopped,
@@ -349,6 +377,9 @@ func (s *Supervisor) stopAll() {
 			Command:      append([]string(nil), current.command...),
 			UpdatedAt:    time.Now().UTC(),
 			LastExitCode: 0,
+			LocalHost:    fields.LocalHost,
+			LocalPort:    fields.LocalPort,
+			Remote:       fields.Remote,
 		})
 	}
 }
@@ -366,16 +397,19 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 		s.lifecyclef("tunnel %s stopped", name)
 		return true
 	case <-time.After(5 * time.Second):
-		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0)
+		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
 		s.lifecyclef("tunnel %s errored: timed out stopping tunnel", name)
 		return false
 	}
 }
 
-func (s *Supervisor) setStatusLocked(name string, state State, detail string, command []string, exitCode int) {
+func (s *Supervisor) setStatusLocked(name string, state State, detail string, command []string, exitCode int, localHost string, localPort int, remote string) {
 	s.status[name] = Status{
 		Name:         name,
 		State:        state,
+		LocalHost:    localHost,
+		LocalPort:    localPort,
+		Remote:       remote,
 		Detail:       detail,
 		Command:      append([]string(nil), command...),
 		UpdatedAt:    time.Now().UTC(),
@@ -416,8 +450,8 @@ func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
-	cmd.Stdout = newLineFilterWriter(logWriter)
-	cmd.Stderr = newLineFilterWriter(logWriter)
+	cmd.Stdout = logWriter
+	cmd.Stderr = logWriter
 	cmd.Env = append(os.Environ(),
 		"AUTOSSH_POLL=10",
 		"AUTOSSH_GATETIME=5",
@@ -545,7 +579,10 @@ func (s *Supervisor) StatusFor(name string) (Status, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st, ok := s.status[name]
-	return st, ok
+	if !ok {
+		return st, false
+	}
+	return s.withRemote(st), true
 }
 
 func (s *Supervisor) ReconcileNow(ctx context.Context) error {
@@ -569,5 +606,23 @@ func (s *Supervisor) lifecyclef(format string, args ...any) {
 	}
 	if s.daemonLog != nil {
 		_, _ = fmt.Fprintf(s.daemonLog, "%s %s\n", time.Now().Format("2006/01/02 15:04:05"), msg)
+	}
+}
+
+func (s *Supervisor) withRemote(st Status) Status {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	if remote, ok := s.remoteURLs[st.Name]; ok && remote != "" {
+		st.Remote = remote
+	}
+	return st
+}
+
+func (s *Supervisor) recordAssignedURL(name, url string, secure bool) {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	current := s.remoteURLs[name]
+	if secure || current == "" || strings.HasPrefix(current, "http://") {
+		s.remoteURLs[name] = url
 	}
 }

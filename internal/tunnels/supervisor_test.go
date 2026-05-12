@@ -59,16 +59,15 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launched = append(launched, resolved.RemoteForward())
-		writer := newLineFilterWriter(logWriter)
-		_, _ = writer.Write([]byte("Warning: Permanently added '[lol.gn.gy]:1433' (ED25519) to the list of known hosts.\n"))
-		_, _ = writer.Write([]byte("Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n"))
-		_, _ = writer.Write([]byte("Press Ctrl-C to close the session.\n"))
-		_, _ = writer.Write([]byte("The subdomain localhost.gn.gy is unavailable. Assigning a random subdomain.\n"))
-		_, _ = writer.Write([]byte("HTTPS: https://example.com\n"))
-		_, _ = writer.Write([]byte("HTTP: http://example.com\n"))
-		_, _ = writer.Write([]byte("connect_to localhost port 8060: failed.\n"))
-		_, _ = writer.Write([]byte("ssh: rejected: connect failed (Connection refused)\n"))
-		_, _ = writer.Write([]byte("hello\n"))
+		_, _ = logWriter.Write([]byte("Warning: Permanently added '[lol.gn.gy]:1433' (ED25519) to the list of known hosts.\n"))
+		_, _ = logWriter.Write([]byte("Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n"))
+		_, _ = logWriter.Write([]byte("Press Ctrl-C to close the session.\n"))
+		_, _ = logWriter.Write([]byte("The subdomain localhost.gn.gy is unavailable. Assigning a random subdomain.\n"))
+		_, _ = logWriter.Write([]byte("HTTPS: https://example.com\n"))
+		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
+		_, _ = logWriter.Write([]byte("connect_to localhost port 8060: failed.\n"))
+		_, _ = logWriter.Write([]byte("ssh: rejected: connect failed (Connection refused)\n"))
+		_, _ = logWriter.Write([]byte("hello\n"))
 		return proc, []string{"autossh", resolved.RemoteForward()}, nil
 	}
 
@@ -86,6 +85,9 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	}
 	if st.State != StateRunning {
 		t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+	}
+	if st.Remote != "https://example.com" {
+		t.Fatalf("status remote = %q, want https://example.com", st.Remote)
 	}
 
 	proc.waitCh <- nil

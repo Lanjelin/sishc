@@ -11,9 +11,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
+	"text/tabwriter"
+	"time"
 
 	"github.com/lanjelin/sishc/internal/config"
 	"github.com/lanjelin/sishc/internal/control"
@@ -154,7 +157,7 @@ func acquireConfigLock(configPath string) (*os.File, error) {
 }
 
 func runStatus(args []string) error {
-	_, paths, err := parsePaths(args)
+	name, verbose, paths, err := parseStatusArgs(args)
 	if err != nil {
 		return err
 	}
@@ -165,9 +168,18 @@ func runStatus(args []string) error {
 	if !resp.OK {
 		return fmt.Errorf(resp.Error)
 	}
-	for _, st := range resp.Statuses {
-		fmt.Printf("%s\t%s\t%s\n", st.Name, st.State, st.Detail)
+	statuses := resp.Statuses
+	sortStatuses(statuses)
+	if name != "" {
+		for _, st := range statuses {
+			if st.Name == name {
+				printStatusDetail(st)
+				return nil
+			}
+		}
+		return fmt.Errorf("tunnel %q not found", name)
 	}
+	printStatusTable(statuses, verbose)
 	return nil
 }
 
@@ -201,6 +213,107 @@ func runReconcile(args []string) error {
 	}
 	fmt.Println("reconciled")
 	return nil
+}
+
+func parseStatusArgs(args []string) (string, bool, pathConfig, error) {
+	fs := flag.NewFlagSet("sishc status", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
+	logDir := fs.String("log-dir", config.DefaultLogDir(), "log directory path")
+	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
+	verbose := fs.Bool("verbose", false, "show detail column")
+	if err := fs.Parse(args); err != nil {
+		return "", false, pathConfig{}, err
+	}
+	rest := fs.Args()
+	if len(rest) > 1 {
+		return "", false, pathConfig{}, fmt.Errorf("usage: sishc status [flags] [<name>]")
+	}
+	name := ""
+	if len(rest) == 1 {
+		name = rest[0]
+	}
+	return name, *verbose, pathConfig{
+		configPath: *configPath,
+		logDir:     *logDir,
+		socketPath: *socketPath,
+	}, nil
+}
+
+func printStatusTable(statuses []tunnels.Status, verbose bool) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	if verbose {
+		fmt.Fprintln(w, "NAME\tSTATE\tLOCAL HOST\tLOCAL PORT\tREMOTE\tDETAIL")
+	} else {
+		fmt.Fprintln(w, "NAME\tSTATE\tLOCAL HOST\tLOCAL PORT\tREMOTE")
+	}
+	for _, st := range statuses {
+		if verbose {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", st.Name, st.State, printableField(st.LocalHost), printableIntField(st.LocalPort), printableField(st.Remote), printableField(st.Detail))
+			continue
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", st.Name, st.State, printableField(st.LocalHost), printableIntField(st.LocalPort), printableField(st.Remote))
+	}
+	_ = w.Flush()
+}
+
+func printStatusDetail(st tunnels.Status) {
+	fmt.Printf("Name:        %s\n", st.Name)
+	fmt.Printf("State:       %s\n", st.State)
+	fmt.Printf("Local host:  %s\n", printableField(st.LocalHost))
+	fmt.Printf("Local port:  %s\n", printableIntField(st.LocalPort))
+	fmt.Printf("Remote:      %s\n", printableField(st.Remote))
+	fmt.Printf("Detail:      %s\n", printableField(st.Detail))
+	if len(st.Command) > 0 {
+		fmt.Printf("Command:     %s\n", strings.Join(st.Command, " "))
+	}
+	fmt.Printf("Updated at:  %s\n", st.UpdatedAt.Format(time.RFC3339))
+	if st.LastExitCode != 0 {
+		fmt.Printf("Exit code:   %d\n", st.LastExitCode)
+	}
+}
+
+func printableField(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
+}
+
+func printableIntField(value int) string {
+	if value == 0 {
+		return "-"
+	}
+	return strconv.Itoa(value)
+}
+
+func sortStatuses(statuses []tunnels.Status) {
+	sort.Slice(statuses, func(i, j int) bool {
+		ri, rj := statusRank(statuses[i].State), statusRank(statuses[j].State)
+		if ri != rj {
+			return ri < rj
+		}
+		return statuses[i].Name < statuses[j].Name
+	})
+}
+
+func statusRank(state tunnels.State) int {
+	switch state {
+	case tunnels.StateRunning:
+		return 0
+	case tunnels.StateStarting:
+		return 1
+	case tunnels.StateReconnecting:
+		return 2
+	case tunnels.StateDisabled:
+		return 3
+	case tunnels.StateStopped:
+		return 4
+	case tunnels.StateError:
+		return 5
+	default:
+		return 6
+	}
 }
 
 func runAdd(args []string) error {
@@ -932,7 +1045,7 @@ func usageText() string {
 
 Commands:
   daemon     Run the tunnel supervisor and control socket
-  status     Show live tunnel status from the daemon
+  status     Show tunnel status
   validate   Validate config and exit
   reconcile  Reconcile config now
   add        Create a tunnel entry
@@ -964,6 +1077,9 @@ Notes:
     - omit both host and port to use globals
     - host only uses global port
     - :port or port only uses global host
+  status:
+    - --verbose adds detail to the table
+    - <name> shows one tunnel in detail
   oneoff:
     - no name => random subdomain
     - port only => host defaults to 127.0.0.1
