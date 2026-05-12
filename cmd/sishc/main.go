@@ -178,14 +178,29 @@ func runAdd(args []string) error {
 		return err
 	}
 	return editConfig(paths.configPath, func(cfg *config.Config) error {
-		tunnel, err := config.BuildTunnel(name, localAddr, *cfg, opts)
+		tunnel, err := config.BuildTunnel(name, localAddr, *cfg, opts.Build)
 		if err != nil {
 			return err
 		}
-		if tunnel.LocalProtocol == "http" {
-			tunnel.LocalProtocol = ""
+		sparse := config.Tunnel{
+			Name:      tunnel.Name,
+			LocalHost: tunnel.LocalHost,
+			LocalPort: tunnel.LocalPort,
+			Enabled:   boolPtr(true),
 		}
-		cfg.UpsertTunnel(tunnel)
+		if opts.SSHKeySet {
+			sparse.SSHKey = opts.Build.SSHKey
+		}
+		if opts.RemotePortSet {
+			sparse.RemotePort = opts.Build.RemotePort
+		}
+		if opts.RemoteServerSet {
+			sparse.RemoteServer = opts.Build.RemoteServer
+		}
+		if opts.LocalProtocolSet && tunnel.LocalProtocol != "http" {
+			sparse.LocalProtocol = opts.Build.LocalProtocol
+		}
+		cfg.UpsertTunnel(sparse)
 		return nil
 	}, paths.socketPath)
 }
@@ -209,7 +224,7 @@ func runStart(args []string) error {
 		return err
 	}
 	return editConfig(paths.configPath, func(cfg *config.Config) error {
-		if !cfg.SetTunnelDisabled(name, false) {
+		if !cfg.SetTunnelEnabled(name, true) {
 			return fmt.Errorf("tunnel %q not found", name)
 		}
 		return nil
@@ -222,7 +237,7 @@ func runStop(args []string) error {
 		return err
 	}
 	return editConfig(paths.configPath, func(cfg *config.Config) error {
-		if !cfg.SetTunnelDisabled(name, true) {
+		if !cfg.SetTunnelEnabled(name, false) {
 			return fmt.Errorf("tunnel %q not found", name)
 		}
 		return nil
@@ -260,6 +275,14 @@ type pathConfig struct {
 	configPath string
 	logPath    string
 	socketPath string
+}
+
+type addOptions struct {
+	Build            config.TunnelBuildOptions
+	SSHKeySet        bool
+	RemotePortSet    bool
+	RemoteServerSet  bool
+	LocalProtocolSet bool
 }
 
 func parsePaths(args []string) (config.Config, pathConfig, error) {
@@ -301,7 +324,7 @@ func parseInitPath(args []string) (string, error) {
 	return *configPath, nil
 }
 
-func parseTunnelBuildArgs(args []string) (pathConfig, string, string, config.TunnelBuildOptions, error) {
+func parseTunnelBuildArgs(args []string) (pathConfig, string, string, addOptions, error) {
 	fs := flag.NewFlagSet("sishc add", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
@@ -311,22 +334,33 @@ func parseTunnelBuildArgs(args []string) (pathConfig, string, string, config.Tun
 	remoteServer := fs.String("remote-server", "", "override remote server")
 	localProtocol := fs.String("local-protocol", "", "local protocol (http, tcp, or https)")
 	if err := fs.Parse(args); err != nil {
-		return pathConfig{}, "", "", config.TunnelBuildOptions{}, err
+		return pathConfig{}, "", "", addOptions{}, err
 	}
 	rest := fs.Args()
 	if len(rest) != 2 {
-		return pathConfig{}, "", "", config.TunnelBuildOptions{}, fmt.Errorf("usage: sishc add [flags] <name> <local_host>:<local_port>")
+		return pathConfig{}, "", "", addOptions{}, fmt.Errorf("usage: sishc add [flags] <name> <local_host>:<local_port>")
 	}
 	protocol := strings.TrimSpace(strings.ToLower(*localProtocol))
 	if protocol != "" && protocol != "tcp" && protocol != "https" && protocol != "http" {
-		return pathConfig{}, "", "", config.TunnelBuildOptions{}, fmt.Errorf("--local-protocol must be tcp, https, or http")
+		return pathConfig{}, "", "", addOptions{}, fmt.Errorf("--local-protocol must be tcp, https, or http")
 	}
-	return pathConfig{configPath: *configPath, socketPath: *socketPath}, rest[0], rest[1], config.TunnelBuildOptions{
-		SSHKey:        *sshKey,
-		LocalProtocol: protocol,
-		RemotePort:    *remotePort,
-		RemoteServer:  *remoteServer,
-	}, nil
+	visited := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+	})
+	opts := addOptions{
+		Build: config.TunnelBuildOptions{
+			SSHKey:        *sshKey,
+			LocalProtocol: protocol,
+			RemotePort:    *remotePort,
+			RemoteServer:  *remoteServer,
+		},
+		SSHKeySet:        visited["ssh-key"],
+		RemotePortSet:    visited["remote-port"],
+		RemoteServerSet:  visited["remote-server"],
+		LocalProtocolSet: visited["local-protocol"],
+	}
+	return pathConfig{configPath: *configPath, socketPath: *socketPath}, rest[0], rest[1], opts, nil
 }
 
 func parseTunnelToggleArgs(args []string) (pathConfig, string, error) {
@@ -522,6 +556,10 @@ func defaultSSHKey() string {
 	return ""
 }
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func isInteractive(f *os.File) bool {
 	info, err := f.Stat()
 	if err != nil {
@@ -610,7 +648,7 @@ Config builder rules:
   - local_host and local_port can be supplied globally or inline as <local_host>:<local_port>
   - local_protocol defaults to http
   - local_protocol tcp or https can be set globally or per tunnel
-  - start/stop only toggle disabled in config; add/remove change tunnel entries
+  - start/stop write enabled true/false in config; disabled remains a legacy fallback on read
   - oneoff can run without a config file if the required values are supplied by flags
   - daemon will offer init automatically when run interactively and the config file is missing
 `

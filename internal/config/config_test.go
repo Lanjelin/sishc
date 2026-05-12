@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +26,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 				LocalPort:     8443,
 				RemotePort:    2222,
 				RemoteServer:  "example.com",
+				Enabled:       boolPtr(true),
 			},
 		},
 	}
@@ -44,6 +46,9 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 	if len(got.Tunnels) != 1 || got.Tunnels[0].Name != "first_tunnel" {
 		t.Fatalf("tunnels round-trip mismatch: %+v", got.Tunnels)
+	}
+	if got.Tunnels[0].Enabled == nil || !*got.Tunnels[0].Enabled {
+		t.Fatalf("round-trip enabled mismatch: %+v", got.Tunnels[0])
 	}
 }
 
@@ -145,8 +150,14 @@ tunnels:
 	if !got.Tunnels[0].Disabled {
 		t.Fatalf("Load() enabled:false tunnel should be disabled: %+v", got.Tunnels[0])
 	}
+	if got.Tunnels[0].Enabled == nil || *got.Tunnels[0].Enabled {
+		t.Fatalf("Load() enabled:false tunnel should carry explicit enabled=false: %+v", got.Tunnels[0])
+	}
 	if !got.Tunnels[1].Disabled {
 		t.Fatalf("Load() disabled:true tunnel should be disabled: %+v", got.Tunnels[1])
+	}
+	if got.Tunnels[1].Enabled != nil {
+		t.Fatalf("Load() disabled:true tunnel should not carry explicit enabled: %+v", got.Tunnels[1])
 	}
 }
 
@@ -235,16 +246,19 @@ func TestConfigTunnelHelpers(t *testing.T) {
 		},
 	}
 
-	cfg.UpsertTunnel(Tunnel{Name: "one", Disabled: true})
-	if !cfg.Tunnels[0].Disabled {
+	cfg.UpsertTunnel(Tunnel{Name: "one", Enabled: boolPtr(true)})
+	if cfg.Tunnels[0].Enabled == nil || !*cfg.Tunnels[0].Enabled {
 		t.Fatalf("UpsertTunnel() did not replace tunnel: %+v", cfg.Tunnels[0])
 	}
 
-	if !cfg.SetTunnelDisabled("two", true) {
-		t.Fatal("SetTunnelDisabled() returned false")
+	if !cfg.SetTunnelEnabled("two", false) {
+		t.Fatal("SetTunnelEnabled() returned false")
+	}
+	if cfg.Tunnels[1].Enabled == nil || *cfg.Tunnels[1].Enabled {
+		t.Fatalf("SetTunnelEnabled() did not update tunnel: %+v", cfg.Tunnels[1])
 	}
 	if !cfg.Tunnels[1].Disabled {
-		t.Fatalf("SetTunnelDisabled() did not update tunnel: %+v", cfg.Tunnels[1])
+		t.Fatalf("SetTunnelEnabled() did not update Disabled: %+v", cfg.Tunnels[1])
 	}
 
 	if !cfg.RemoveTunnel("one") {
@@ -252,5 +266,35 @@ func TestConfigTunnelHelpers(t *testing.T) {
 	}
 	if len(cfg.Tunnels) != 1 || cfg.Tunnels[0].Name != "two" {
 		t.Fatalf("RemoveTunnel() unexpected tunnels: %+v", cfg.Tunnels)
+	}
+}
+
+func TestSaveWritesEnabledField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg := Config{
+		Tunnels: []Tunnel{
+			{Name: "one", Enabled: boolPtr(true)},
+			{Name: "two", Enabled: boolPtr(false)},
+		},
+	}
+	if err := Save(path, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, "enabled: true") {
+		t.Fatalf("Save() missing enabled:true:\n%s", got)
+	}
+	if !strings.Contains(got, "enabled: false") {
+		t.Fatalf("Save() missing enabled:false:\n%s", got)
+	}
+	if strings.Contains(got, "disabled: true") {
+		t.Fatalf("Save() should prefer enabled over disabled:\n%s", got)
 	}
 }

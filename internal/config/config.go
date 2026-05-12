@@ -23,6 +23,7 @@ type Tunnel struct {
 	LocalPort     int    `yaml:"local_port,omitempty"`
 	RemotePort    int    `yaml:"remote_port,omitempty"`
 	RemoteServer  string `yaml:"remote_server,omitempty"`
+	Enabled       *bool  `yaml:"enabled,omitempty"`
 	Disabled      bool   `yaml:"disabled,omitempty"`
 }
 
@@ -124,7 +125,9 @@ func Save(path string, cfg Config) error {
 			writeTunnelIntField(&b, "local_port", tunnel.LocalPort)
 			writeTunnelIntField(&b, "remote_port", tunnel.RemotePort)
 			writeTunnelField(&b, "remote_server", tunnel.RemoteServer)
-			if tunnel.Disabled {
+			if tunnel.Enabled != nil {
+				writeTunnelBoolField(&b, "enabled", *tunnel.Enabled)
+			} else if tunnel.Disabled {
 				b.WriteString("    disabled: true\n")
 			}
 		}
@@ -286,9 +289,14 @@ func (c *Config) RemoveTunnel(name string) bool {
 }
 
 func (c *Config) SetTunnelDisabled(name string, disabled bool) bool {
+	return c.SetTunnelEnabled(name, !disabled)
+}
+
+func (c *Config) SetTunnelEnabled(name string, enabled bool) bool {
 	for i := range c.Tunnels {
 		if c.Tunnels[i].Name == name {
-			c.Tunnels[i].Disabled = disabled
+			c.Tunnels[i].Enabled = boolPtr(enabled)
+			c.Tunnels[i].Disabled = !enabled
 			return true
 		}
 	}
@@ -529,12 +537,14 @@ func assignTunnelField(t *Tunnel, key, value string) error {
 		if err != nil {
 			return err
 		}
+		t.Enabled = boolPtr(b)
 		t.Disabled = !b
 	case "disabled":
 		b, err := parseBool(value)
 		if err != nil {
 			return err
 		}
+		t.Enabled = nil
 		t.Disabled = b
 	default:
 		return fmt.Errorf("unknown tunnel key %q", key)
@@ -633,4 +643,12 @@ func writeTunnelIntField(b *strings.Builder, key string, value int) {
 		return
 	}
 	b.WriteString(fmt.Sprintf("    %s: %d\n", key, value))
+}
+
+func writeTunnelBoolField(b *strings.Builder, key string, value bool) {
+	b.WriteString(fmt.Sprintf("    %s: %t\n", key, value))
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
