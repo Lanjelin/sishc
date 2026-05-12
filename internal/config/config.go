@@ -194,8 +194,16 @@ func (c Config) EffectiveTunnel(t Tunnel) Tunnel {
 }
 
 func BuildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions) (Tunnel, error) {
+	return buildTunnel(name, localAddr, cfg, opts, true)
+}
+
+func BuildOneOffTunnel(localAddr string, cfg Config, opts TunnelBuildOptions) (Tunnel, error) {
+	return buildTunnel("", localAddr, cfg, opts, false)
+}
+
+func buildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions, requireName bool) (Tunnel, error) {
 	name = strings.TrimSpace(name)
-	if name == "" {
+	if requireName && name == "" {
 		return Tunnel{}, fmt.Errorf("tunnel name is required")
 	}
 
@@ -237,6 +245,21 @@ func BuildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions) (T
 		RemotePort:    remotePort,
 		RemoteServer:  remoteServer,
 	}, nil
+}
+
+func BuildOneOffTunnelFromPort(localPort string, cfg Config, opts TunnelBuildOptions) (Tunnel, error) {
+	port := strings.TrimSpace(localPort)
+	if port == "" {
+		return Tunnel{}, fmt.Errorf("local port is required")
+	}
+	if strings.Contains(port, ":") {
+		return BuildOneOffTunnel(port, cfg, opts)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return Tunnel{}, fmt.Errorf("invalid local port %q", port)
+	}
+	return BuildOneOffTunnel("127.0.0.1:"+strconv.Itoa(n), cfg, opts)
 }
 
 func resolveLocalEndpoint(localAddr string, cfg Config) (string, int, error) {
@@ -406,7 +429,11 @@ func (t Tunnel) ProtocolPrefix() string {
 }
 
 func (t Tunnel) RemoteForward() string {
-	return t.Name + ":" + t.ProtocolPrefix() + t.LocalHost + ":" + strconv.Itoa(t.LocalPort)
+	forward := t.ProtocolPrefix() + t.LocalHost + ":" + strconv.Itoa(t.LocalPort)
+	if t.Name == "" {
+		return forward
+	}
+	return t.Name + ":" + forward
 }
 
 func parse(input string) (Config, error) {

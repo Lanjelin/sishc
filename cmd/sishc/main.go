@@ -321,7 +321,15 @@ func runOneoff(ctx context.Context, args []string) error {
 		}
 		cfg = config.Config{}
 	}
-	tunnel, err := config.BuildTunnel(name, localAddr, cfg, opts)
+	var tunnel config.Tunnel
+	switch {
+	case name != "":
+		tunnel, err = config.BuildTunnel(name, localAddr, cfg, opts)
+	case isPortOnlyLocalAddr(localAddr):
+		tunnel, err = config.BuildOneOffTunnelFromPort(localAddr, cfg, opts)
+	default:
+		tunnel, err = config.BuildOneOffTunnel(localAddr, cfg, opts)
+	}
 	if err != nil {
 		return err
 	}
@@ -493,12 +501,20 @@ func parseOneoffArgs(args []string) (string, string, string, config.TunnelBuildO
 		return "", "", "", config.TunnelBuildOptions{}, err
 	}
 	rest := fs.Args()
-	if len(rest) != 2 {
-		return "", "", "", config.TunnelBuildOptions{}, fmt.Errorf("usage: sishc oneoff [flags] <name> <local_host>:<local_port>")
+	if len(rest) != 1 && len(rest) != 2 {
+		return "", "", "", config.TunnelBuildOptions{}, fmt.Errorf("usage: sishc oneoff [flags] [<name>] <local_host>:<local_port> | [flags] <local_port>")
 	}
 	protocol := strings.TrimSpace(strings.ToLower(*localProtocol))
 	if protocol != "" && protocol != "tcp" && protocol != "https" && protocol != "http" {
 		return "", "", "", config.TunnelBuildOptions{}, fmt.Errorf("--local-protocol must be tcp, https, or http")
+	}
+	if len(rest) == 1 {
+		return *configPath, "", rest[0], config.TunnelBuildOptions{
+			SSHKey:        *sshKey,
+			LocalProtocol: protocol,
+			RemotePort:    *remotePort,
+			RemoteServer:  *remoteServer,
+		}, nil
 	}
 	return *configPath, rest[0], rest[1], config.TunnelBuildOptions{
 		SSHKey:        *sshKey,
@@ -506,6 +522,15 @@ func parseOneoffArgs(args []string) (string, string, string, config.TunnelBuildO
 		RemotePort:    *remotePort,
 		RemoteServer:  *remoteServer,
 	}, nil
+}
+
+func isPortOnlyLocalAddr(localAddr string) bool {
+	localAddr = strings.TrimSpace(localAddr)
+	if localAddr == "" || strings.Contains(localAddr, ":") {
+		return false
+	}
+	_, err := strconv.Atoi(localAddr)
+	return err == nil
 }
 
 func parseLocalEndpoint(localAddr string) (string, int, error) {
@@ -736,39 +761,37 @@ func printUsage() {
 
 func usageText() string {
 	return `Usage:
-  sishc daemon [--config PATH] [--log PATH] [--socket PATH]
-  sishc status [--socket PATH]
-  sishc validate [--config PATH]
-  sishc reconcile [--socket PATH]
-  sishc add [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
-  sishc update [--config PATH] [--socket PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> [<new-name>] <local_host>:<local_port>
-  sishc remove [--config PATH] [--socket PATH] <name>
-  sishc start [--config PATH] [--socket PATH] <name>
-  sishc stop [--config PATH] [--socket PATH] <name>
-  sishc oneoff [--config PATH] [--ssh-key PATH] [--remote-port PORT] [--remote-server HOST] [--local-protocol tcp|https] <name> <local_host>:<local_port>
-  sishc init [--config PATH]
+  sishc <command> [flags]
 
 Commands:
-  daemon      Run the tunnel supervisor and control socket
-  status      Query live daemon status
-  validate    Validate config and exit
-  reconcile   Force a live reconcile on the daemon
-  add         Add a new tunnel in config and reconcile
-  update      Update an existing tunnel in config and reconcile
-  remove      Remove a tunnel from config and reconcile
-  start       Enable a tunnel in config and reconcile
-  stop        Disable a tunnel in config and reconcile
-  oneoff      Run a temporary tunnel without writing config
-  init        Create a new config interactively
+  daemon     Run the tunnel supervisor and control socket
+  status     Show live tunnel status from the daemon
+  validate   Validate config and exit
+  reconcile  Reconcile config now
+  add        Create a tunnel entry
+  update     Update an existing tunnel entry
+  remove     Remove a tunnel entry
+  start      Enable a tunnel
+  stop       Disable a tunnel
+  oneoff     Run a temporary tunnel
+  init       Create a config interactively
 
-Config builder rules:
-  - ssh_key, remote_port, and remote_server are required globally or via add/oneoff overrides
-  - local_host and local_port can be supplied globally or inline as <local_host>:<local_port>
-  - local_protocol defaults to http
-  - local_protocol tcp or https can be set globally or per tunnel
-  - add fails if the tunnel already exists; update edits an existing tunnel and can rename it
-  - start/stop write enabled true/false in config; disabled remains a legacy fallback on read
-  - oneoff can run without a config file if the required values are supplied by flags
-  - daemon will offer init automatically when run interactively and the config file is missing
+Flags:
+  --config PATH   Config file path
+  --log PATH      Log file path
+  --socket PATH   Control socket path
+
+Tunnel flags:
+  --ssh-key PATH
+  --remote-port PORT
+  --remote-server HOST
+  --local-protocol tcp|https
+
+Special forms:
+  add:         [tunnel flags] <name> <local_host>:<local_port>
+  update:      [tunnel flags] <name> [<new-name>] <local_host>:<local_port>
+  oneoff:      [tunnel flags] [<name>] [<local_host>:]<local_port>
+  oneoff:      no name => random subdomain
+  oneoff:      only port => host defaults to 127.0.0.1
 `
 }

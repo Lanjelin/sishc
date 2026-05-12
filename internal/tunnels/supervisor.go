@@ -435,7 +435,7 @@ func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.
 }
 
 func RunOneOff(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) error {
-	process, _, err := defaultLauncher(ctx, tunnel, tunnel, logWriter)
+	process, _, err := oneOffLauncher(ctx, tunnel, logWriter)
 	if err != nil {
 		return err
 	}
@@ -444,6 +444,34 @@ func RunOneOff(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) e
 		return ctx.Err()
 	}
 	return err
+}
+
+func oneOffLauncher(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+	sshKey := expandSSHKey(tunnel.SSHKey)
+	command := []string{
+		"autossh",
+		"-M", "0",
+		"-o", "ServerAliveInterval=10",
+		"-o", "ServerAliveCountMax=3",
+		"-o", "StrictHostKeyChecking=no",
+		"-T",
+		"-i", sshKey,
+		"-p", strconv.Itoa(tunnel.RemotePort),
+		"-R", tunnel.RemoteForward(),
+		tunnel.RemoteServer,
+	}
+
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	cmd.Stdout = logWriter
+	cmd.Stderr = logWriter
+	cmd.Env = append(os.Environ(),
+		"AUTOSSH_POLL=10",
+		"AUTOSSH_GATETIME=5",
+	)
+	if err := cmd.Start(); err != nil {
+		return nil, command, err
+	}
+	return &osProcess{cmd: cmd}, command, nil
 }
 
 type osProcess struct {

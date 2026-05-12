@@ -269,6 +269,39 @@ func TestConfigTunnelHelpers(t *testing.T) {
 	}
 }
 
+func TestRemoteForwardOmitsNameForOneoff(t *testing.T) {
+	tunnel := Tunnel{
+		LocalProtocol: "http",
+		LocalHost:     "127.0.0.1",
+		LocalPort:     6080,
+	}
+	if got := tunnel.RemoteForward(); got != "80:127.0.0.1:6080" {
+		t.Fatalf("RemoteForward() = %q, want 80:127.0.0.1:6080", got)
+	}
+	tunnel.LocalProtocol = "https"
+	if got := tunnel.RemoteForward(); got != "443:127.0.0.1:6080" {
+		t.Fatalf("RemoteForward() = %q, want 443:127.0.0.1:6080", got)
+	}
+}
+
+func TestBuildOneOffTunnelAllowsEmptyName(t *testing.T) {
+	cfg := Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		RemotePort:   1433,
+		RemoteServer: "rofl.gn.gy",
+	}
+	tunnel, err := BuildOneOffTunnelFromPort("6080", cfg, TunnelBuildOptions{})
+	if err != nil {
+		t.Fatalf("BuildOneOffTunnelFromPort() error = %v", err)
+	}
+	if tunnel.Name != "" {
+		t.Fatalf("BuildOneOffTunnelFromPort() Name = %q, want empty", tunnel.Name)
+	}
+	if tunnel.LocalHost != "127.0.0.1" || tunnel.LocalPort != 6080 {
+		t.Fatalf("BuildOneOffTunnelFromPort() local endpoint = %s:%d, want 127.0.0.1:6080", tunnel.LocalHost, tunnel.LocalPort)
+	}
+}
+
 func TestSaveWritesEnabledField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

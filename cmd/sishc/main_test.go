@@ -180,3 +180,41 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 		t.Fatalf("tunnel.Enabled = %+v, want true", tunnel.Enabled)
 	}
 }
+
+func TestParseOneoffArgsSupportsRandomSubdomainAndPortOnly(t *testing.T) {
+	cfgPath, name, localAddr, _, err := parseOneoffArgs([]string{"6080"})
+	if err != nil {
+		t.Fatalf("parseOneoffArgs() error = %v", err)
+	}
+	if cfgPath != config.DefaultConfigPath() {
+		t.Fatalf("cfgPath = %q, want default", cfgPath)
+	}
+	if name != "" {
+		t.Fatalf("name = %q, want empty", name)
+	}
+	if localAddr != "6080" {
+		t.Fatalf("localAddr = %q, want 6080", localAddr)
+	}
+
+	_, name, localAddr, _, err = parseOneoffArgs([]string{"localhost:6080"})
+	if err != nil {
+		t.Fatalf("parseOneoffArgs() error = %v", err)
+	}
+	if name != "" {
+		t.Fatalf("name = %q, want empty", name)
+	}
+	if localAddr != "localhost:6080" {
+		t.Fatalf("localAddr = %q, want localhost:6080", localAddr)
+	}
+
+	_, name, localAddr, _, err = parseOneoffArgs([]string{"test1", "localhost:6080"})
+	if err != nil {
+		t.Fatalf("parseOneoffArgs() error = %v", err)
+	}
+	if name != "test1" {
+		t.Fatalf("name = %q, want test1", name)
+	}
+	if localAddr != "localhost:6080" {
+		t.Fatalf("localAddr = %q, want localhost:6080", localAddr)
+	}
+}
