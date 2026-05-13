@@ -356,6 +356,8 @@ func printLogTail(path string, tail int, out io.Writer) error {
 
 func followLogFile(ctx context.Context, path string, out io.Writer) error {
 	offset := int64(0)
+	var lastDev uint64
+	var lastIno uint64
 	for {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -368,6 +370,13 @@ func followLogFile(ctx context.Context, path string, out io.Writer) error {
 				}
 			}
 			return err
+		}
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			if lastDev != 0 && (lastDev != uint64(stat.Dev) || lastIno != uint64(stat.Ino)) {
+				offset = 0
+			}
+			lastDev = uint64(stat.Dev)
+			lastIno = uint64(stat.Ino)
 		}
 		if info.Size() < offset {
 			offset = 0
