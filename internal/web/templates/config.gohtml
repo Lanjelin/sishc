@@ -1,11 +1,10 @@
 {{ define "config" }}{{ template "base" . }}{{ end }}
 
 {{ define "configContent" }}
-<section class="panel">
+<section class="panel form-panel">
   <div class="panel-head">
     <div>
       <h1>Global config</h1>
-      <p class="muted">These values apply to tunnels unless a tunnel overrides them.</p>
     </div>
     <div class="panel-actions">
       <a class="button secondary" href="/config/raw">Raw config</a>
@@ -14,37 +13,48 @@
   {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
   {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
   <form method="post" action="/config" class="form">
-    <div class="grid">
-      <label>
-        <span>SSH key</span>
-        <input name="ssh_key" type="text" value="{{ .Config.SSHKey }}" placeholder="~/.ssh/id_rsa">
-      </label>
-      <label>
-        <span>Remote server</span>
-        <input name="remote_server" type="text" value="{{ .Config.RemoteServer }}" placeholder="sish.example.com">
-      </label>
-      <label>
-        <span>Remote port</span>
-        <input name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Config.RemotePort }}" placeholder="1433">
-      </label>
-      <label>
-        <span>Local host</span>
-        <input name="local_host" type="text" value="{{ .Config.LocalHost }}" placeholder="caddy">
-      </label>
-      <label>
-        <span>Local port</span>
-        <input name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Config.LocalPort }}" placeholder="80">
-      </label>
-      <label>
-        <span>Local protocol</span>
-        <select name="local_protocol">
+    <div class="kv-list">
+      <div class="kv-row">
+        <label for="local_host">Local host</label>
+        <input id="local_host" name="local_host" type="text" value="{{ .Config.LocalHost }}" placeholder="caddy">
+      </div>
+      <div class="kv-row">
+        <label for="local_port">Local port</label>
+        <input id="local_port" name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Config.LocalPort }}" placeholder="80">
+      </div>
+      <div class="kv-row">
+        <label for="local_protocol">Local protocol</label>
+        <select id="local_protocol" name="local_protocol">
           <option value="" {{ selected .Config.LocalProtocol "" }}>http</option>
           <option value="https" {{ selected .Config.LocalProtocol "https" }}>https</option>
           <option value="tcp" {{ selected .Config.LocalProtocol "tcp" }}>tcp</option>
         </select>
-      </label>
+      </div>
+      <div class="kv-row">
+        <label for="remote_server">Remote server</label>
+        <input id="remote_server" name="remote_server" type="text" value="{{ .Config.RemoteServer }}" placeholder="sish.example.com">
+      </div>
+      <div class="kv-row">
+        <label for="remote_port">Remote port</label>
+        <input id="remote_port" name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Config.RemotePort }}" placeholder="1433">
+      </div>
+      <div class="kv-row">
+        <label for="ssh_key">SSH key</label>
+        <input id="ssh_key" name="ssh_key" type="text" value="{{ .Config.SSHKey }}" placeholder="~/.ssh/id_rsa">
+      </div>
+      <div class="kv-row">
+        <label for="web_enabled">Web enabled</label>
+        <select id="web_enabled" name="web_enabled">
+          <option value="false" {{ if not .Config.WebEnabled }}selected{{ end }}>false</option>
+          <option value="true" {{ if .Config.WebEnabled }}selected{{ end }}>true</option>
+        </select>
+      </div>
+      <div class="kv-row">
+        <label for="web_listen">Web listen</label>
+        <input id="web_listen" name="web_listen" type="text" value="{{ .Config.WebListen }}" placeholder="127.0.0.1:5000">
+      </div>
     </div>
-    <div class="panel-actions">
+    <div class="panel-actions footer-actions">
       <button class="button" type="submit">Save globals</button>
     </div>
   </form>

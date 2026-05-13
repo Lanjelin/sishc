@@ -1,65 +1,57 @@
 {{ define "tunnel_form" }}{{ template "base" . }}{{ end }}
 
 {{ define "tunnelFormContent" }}
-<section class="panel">
+<section class="panel form-panel">
   <div class="panel-head">
     <div>
       <h1>{{ if .Title }}{{ .Title }}{{ else }}Tunnel{{ end }}</h1>
-      <p class="muted">
-        {{ if .IsEdit }}Leave fields blank to keep the current value.{{ else }}Blank fields fall back to globals.{{ end }}
-      </p>
     </div>
   </div>
   {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
   {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
   <form method="post" action="{{ .Action }}" class="form">
-    {{ if .IsEdit }}
-    <div class="grid">
-      <label>
-        <span>New name</span>
-        <input name="new_name" type="text" value="" placeholder="{{ .Tunnel.Name }}">
-      </label>
-    </div>
-    {{ end }}
-    <div class="grid">
-      <label>
-        <span>Name</span>
-        <input name="name" type="text" value="{{ .Tunnel.Name }}" {{ if .IsEdit }}readonly{{ end }} placeholder="test1.example.com">
-      </label>
-      <label>
-        <span>Local host</span>
-        <input name="local_host" type="text" value="{{ .Tunnel.LocalHost }}" placeholder="{{ .Defaults.LocalHost }}">
-      </label>
-      <label>
-        <span>Local port</span>
-        <input name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.LocalPort }}" placeholder="{{ inputInt .Defaults.LocalPort }}">
-      </label>
-      <label>
-        <span>SSH key</span>
-        <input name="ssh_key" type="text" value="{{ .Tunnel.SSHKey }}" placeholder="{{ .Defaults.SSHKey }}">
-      </label>
-      <label>
-        <span>Remote server</span>
-        <input name="remote_server" type="text" value="{{ .Tunnel.RemoteServer }}" placeholder="{{ .Defaults.RemoteServer }}">
-      </label>
-      <label>
-        <span>Remote port</span>
-        <input name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.RemotePort }}" placeholder="{{ inputInt .Defaults.RemotePort }}">
-      </label>
-      <label>
-        <span>Local protocol</span>
-        <select name="local_protocol">
+    <div class="kv-list">
+      <div class="kv-row">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" value="{{ .Tunnel.Name }}" placeholder="test1.example.com">
+      </div>
+      <div class="kv-row">
+        <label for="local_host">Local host</label>
+        <input id="local_host" name="local_host" type="text" value="{{ .Tunnel.LocalHost }}" placeholder="{{ .Defaults.LocalHost }}">
+      </div>
+      <div class="kv-row">
+        <label for="local_port">Local port</label>
+        <input id="local_port" name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.LocalPort }}" placeholder="{{ inputInt .Defaults.LocalPort }}">
+      </div>
+      <div class="kv-row">
+        <label for="local_protocol">Local protocol</label>
+        <select id="local_protocol" name="local_protocol">
           <option value="" {{ selected .Tunnel.LocalProtocol "" }}>http</option>
           <option value="https" {{ selected .Tunnel.LocalProtocol "https" }}>https</option>
           <option value="tcp" {{ selected .Tunnel.LocalProtocol "tcp" }}>tcp</option>
         </select>
-      </label>
-      <label class="check">
-        <input name="enabled" type="checkbox" {{ if not .Tunnel.Disabled }}checked{{ end }}>
-        <span>Enabled</span>
-      </label>
+      </div>
+      <div class="kv-row">
+        <label for="remote_server">Remote server</label>
+        <input id="remote_server" name="remote_server" type="text" value="{{ .Tunnel.RemoteServer }}" placeholder="{{ .Defaults.RemoteServer }}">
+      </div>
+      <div class="kv-row">
+        <label for="remote_port">Remote port</label>
+        <input id="remote_port" name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.RemotePort }}" placeholder="{{ inputInt .Defaults.RemotePort }}">
+      </div>
+      <div class="kv-row">
+        <label for="ssh_key">SSH key</label>
+        <input id="ssh_key" name="ssh_key" type="text" value="{{ .Tunnel.SSHKey }}" placeholder="{{ .Defaults.SSHKey }}">
+      </div>
+      <div class="kv-row">
+        <label for="enabled">Enabled</label>
+        <select id="enabled" name="enabled">
+          <option value="true" {{ if not .Tunnel.Disabled }}selected{{ end }}>true</option>
+          <option value="false" {{ if .Tunnel.Disabled }}selected{{ end }}>false</option>
+        </select>
+      </div>
     </div>
-    <div class="panel-actions">
+    <div class="panel-actions footer-actions">
       <button class="button" type="submit">{{ if .Submit }}{{ .Submit }}{{ else }}Save tunnel{{ end }}</button>
       <a class="button secondary" href="/">Cancel</a>
     </div>

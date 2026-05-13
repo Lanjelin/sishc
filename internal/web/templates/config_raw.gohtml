@@ -1,11 +1,10 @@
 {{ define "config_raw" }}{{ template "base" . }}{{ end }}
 
 {{ define "configRawContent" }}
-<section class="panel">
+<section class="panel form-panel">
   <div class="panel-head">
     <div>
       <h1>Raw config</h1>
-      <p class="muted">This saves the canonical YAML format after validation.</p>
     </div>
     <div class="panel-actions">
       <a class="button secondary" href="/config">Structured config</a>
@@ -14,11 +13,11 @@
   {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
   {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
   <form method="post" action="/config/raw" class="form">
-    <label class="stack">
+    <label class="stack editor">
       <span>YAML</span>
-      <textarea name="raw" rows="20" class="code">{{ .Raw }}</textarea>
+      <textarea name="raw" rows="18" class="code">{{ .Raw }}</textarea>
     </label>
-    <div class="panel-actions">
+    <div class="panel-actions footer-actions">
       <button class="button" type="submit">Save config</button>
     </div>
   </form>

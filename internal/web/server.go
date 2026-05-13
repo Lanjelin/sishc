@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	htmlpkg "html"
 	"html/template"
 	"io"
 	"io/fs"
@@ -46,10 +47,12 @@ type DashboardPage struct {
 }
 
 type TunnelRow struct {
-	Tunnel    config.Tunnel
-	Effective config.Tunnel
-	Status    tunnels.Status
-	HasState  bool
+	Tunnel             config.Tunnel
+	Effective          config.Tunnel
+	Status             tunnels.Status
+	HasState           bool
+	InheritedLocalHost bool
+	InheritedLocalPort bool
 }
 
 type FormPage struct {
@@ -78,7 +81,7 @@ type LogsPage struct {
 	Name            string
 	Follow          bool
 	Tail            int
-	Lines           []string
+	Lines           []template.HTML
 	Message         string
 	Error           string
 }
@@ -101,7 +104,6 @@ func New(configPath, logDir, socketPath, listen string) *Server {
 		"selected":      selected,
 		"formatTime":    formatTime,
 		"tunnelLabel":   tunnelLabel,
-		"statusSummary": statusSummary,
 		"remoteDisplay": remoteDisplay,
 		"protocolLabel": protocolLabel,
 	}
@@ -213,6 +215,8 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 		cfg.RemotePort = n
 	}
 	cfg.RemoteServer = strings.TrimSpace(r.FormValue("remote_server"))
+	cfg.WebEnabled = strings.EqualFold(strings.TrimSpace(r.FormValue("web_enabled")), "true")
+	cfg.WebListen = strings.TrimSpace(r.FormValue("web_listen"))
 	if err := cfg.Validate(); err != nil {
 		s.renderError(w, "config", err.Error())
 		return
@@ -342,18 +346,14 @@ func (s *Server) handleTunnelEditPost(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "tunnel_form", err.Error())
 		return
 	}
-	newName := strings.TrimSpace(r.FormValue("new_name"))
-	if newName != "" {
-		if other, exists := cfg.Tunnel(newName); exists && other.Name != oldName {
-			s.renderError(w, "tunnel_form", fmt.Sprintf("tunnel %q already exists", newName))
-			return
-		}
-		tunnel.Name = newName
-	}
 	if tunnel.Name == "" {
 		tunnel.Name = oldName
 	}
 	if oldName != tunnel.Name {
+		if other, exists := cfg.Tunnel(tunnel.Name); exists && other.Name != oldName {
+			s.renderError(w, "tunnel_form", fmt.Sprintf("tunnel %q already exists", tunnel.Name))
+			return
+		}
 		_ = cfg.RemoveTunnel(oldName)
 	}
 	cfg.UpsertTunnel(tunnel)
@@ -398,7 +398,7 @@ func (s *Server) handleLogsGet(w http.ResponseWriter, r *http.Request) {
 	follow := queryBool(r, "follow")
 	path := s.logPath(name)
 	lines, err := readTail(path, tail)
-	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: lines}
+	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines)}
 	if err != nil {
 		if os.IsNotExist(err) {
 			page.Message = "Log file not found yet."
@@ -424,7 +424,7 @@ func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	lines, err := readTail(path, tail)
 	if err == nil {
 		for _, line := range lines {
-			writeSSE(w, "line", line)
+			writeSSE(w, "line", string(renderLogLine(line)))
 		}
 		flusher.Flush()
 	}
@@ -488,7 +488,12 @@ func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, bool, string) {
 	rows := make([]TunnelRow, 0, len(cfg.Tunnels))
 	for _, tunnel := range cfg.Tunnels {
 		effective := cfg.EffectiveTunnel(tunnel)
-		row := TunnelRow{Tunnel: tunnel, Effective: effective}
+		row := TunnelRow{
+			Tunnel:             tunnel,
+			Effective:          effective,
+			InheritedLocalHost: tunnel.LocalHost == "" && effective.LocalHost != "",
+			InheritedLocalPort: tunnel.LocalPort == 0 && effective.LocalPort != 0,
+		}
 		if st, ok := statuses[tunnel.Name]; ok {
 			row.Status = st
 			row.HasState = true
@@ -627,7 +632,15 @@ func buildTunnelFromForm(cfg config.Config, existing *config.Tunnel, r *http.Req
 		tunnel.Enabled = boolPtr(true)
 		tunnel.Disabled = false
 	}
-	enabled := r.FormValue("enabled") == "on"
+	enabled := true
+	switch strings.ToLower(strings.TrimSpace(r.FormValue("enabled"))) {
+	case "", "true":
+		enabled = true
+	case "false":
+		enabled = false
+	default:
+		enabled = false
+	}
 	tunnel.Enabled = boolPtr(enabled)
 	tunnel.Disabled = !enabled
 	return tunnel, nil
@@ -709,7 +722,7 @@ func followLogFile(ctx context.Context, path string, w io.Writer, flusher http.F
 		for {
 			line, err := reader.ReadString('\n')
 			if len(line) > 0 {
-				writeSSE(w, "line", strings.TrimRight(line, "\r\n"))
+				writeSSE(w, "line", string(renderLogLine(strings.TrimRight(line, "\r\n"))))
 				offset += int64(len(line))
 				flusher.Flush()
 			}
@@ -758,6 +771,134 @@ func splitLines(data string) []string {
 		return nil
 	}
 	return strings.Split(data, "\n")
+}
+
+func renderLogLines(lines []string) []template.HTML {
+	if len(lines) == 0 {
+		return nil
+	}
+	rendered := make([]template.HTML, 0, len(lines))
+	for _, line := range lines {
+		rendered = append(rendered, renderLogLine(line))
+	}
+	return rendered
+}
+
+func renderLogLine(line string) template.HTML {
+	if !strings.Contains(line, "\x1b[") {
+		return template.HTML(htmlpkg.EscapeString(line))
+	}
+
+	var out strings.Builder
+	style := ansiStyle{}
+	open := false
+	emitOpen := func() {
+		if open {
+			out.WriteString("</span>")
+			open = false
+		}
+		if class := style.class(); class != "" {
+			out.WriteString(`<span class="`)
+			out.WriteString(class)
+			out.WriteString(`">`)
+			open = true
+		}
+	}
+
+	for i := 0; i < len(line); {
+		if line[i] == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
+			if open {
+				out.WriteString("</span>")
+				open = false
+			}
+			end := i + 2
+			for end < len(line) && line[end] != 'm' {
+				end++
+			}
+			if end >= len(line) {
+				out.WriteString(htmlpkg.EscapeString(line[i:]))
+				break
+			}
+			for _, code := range strings.Split(line[i+2:end], ";") {
+				style.apply(code)
+			}
+			emitOpen()
+			i = end + 1
+			continue
+		}
+		next := strings.IndexByte(line[i:], '\x1b')
+		if next == -1 {
+			out.WriteString(htmlpkg.EscapeString(line[i:]))
+			break
+		}
+		out.WriteString(htmlpkg.EscapeString(line[i : i+next]))
+		i += next
+	}
+	if open {
+		out.WriteString("</span>")
+	}
+	return template.HTML(out.String())
+}
+
+type ansiStyle struct {
+	bold bool
+	fg   string
+	bg   string
+}
+
+func (s *ansiStyle) apply(code string) {
+	switch code {
+	case "0":
+		*s = ansiStyle{}
+	case "1":
+		s.bold = true
+	case "22":
+		s.bold = false
+	case "39":
+		s.fg = ""
+	case "49":
+		s.bg = ""
+	default:
+		if isAnsiFg(code) {
+			s.fg = code
+		} else if isAnsiBg(code) {
+			s.bg = code
+		}
+	}
+}
+
+func (s ansiStyle) class() string {
+	classes := make([]string, 0, 3)
+	if s.bold {
+		classes = append(classes, "ansi-bold")
+	}
+	if s.fg != "" {
+		classes = append(classes, "ansi-fg-"+s.fg)
+	}
+	if s.bg != "" {
+		classes = append(classes, "ansi-bg-"+s.bg)
+	}
+	return strings.Join(classes, " ")
+}
+
+func isAnsiFg(code string) bool {
+	switch code {
+	case "30", "31", "32", "33", "34", "35", "36", "37",
+		"90", "91", "92", "93", "94", "95", "96", "97":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAnsiBg(code string) bool {
+	switch code {
+	case "40", "41", "42", "43", "44", "45", "46", "47",
+		"100", "101", "102", "103", "104", "105", "106", "107":
+		return true
+	default:
+		return false
+	}
 }
 
 func queryInt(r *http.Request, key string, def int) int {
@@ -811,13 +952,6 @@ func statusLabel(st tunnels.State) string {
 	default:
 		return string(st)
 	}
-}
-
-func statusSummary(st tunnels.Status) string {
-	if st.Detail != "" {
-		return st.Detail
-	}
-	return statusLabel(st.State)
 }
 
 func formatInt(v int) string {

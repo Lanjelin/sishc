@@ -26,7 +26,7 @@
   const box = document.getElementById('log-output');
   const src = new EventSource('/logs/{{ .Name }}/stream?tail={{ .Tail }}');
   src.addEventListener('line', function(ev) {
-    box.textContent += ev.data + '\n';
+    box.insertAdjacentHTML('beforeend', ev.data + '\n');
     box.scrollTop = box.scrollHeight;
   });
 })();
