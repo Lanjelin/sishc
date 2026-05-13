@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -34,5 +35,18 @@ func TestRenderLogLinesReverseOrder(t *testing.T) {
 	}
 	if got := string(rendered[2]); got != "oldest" {
 		t.Fatalf("rendered[2] = %q, want oldest", got)
+	}
+}
+
+func TestHandleSettingsGetRendersContent(t *testing.T) {
+	s := New("", "", "", "/")
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/settings", nil)
+
+	s.handleSettingsGet(rr, req)
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "Settings") {
+		t.Fatalf("settings page did not render expected content: %q", body)
 	}
 }

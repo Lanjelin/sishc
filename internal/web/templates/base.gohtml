@@ -5,10 +5,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SISHC Tunnel Manager</title>
+  <script>
+  (function() {
+    var theme = localStorage.getItem('sishc.theme') || 'default';
+    theme = ({ catppuccin: 'catppuccin-mocha', moss: 'gruvbox' }[theme]) || theme;
+    var lang = localStorage.getItem('sishc.language') || 'en';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('lang', lang);
+  })();
+  </script>
   <link rel="icon" type="image/png" sizes="16x16" href="/static/tunnel-16.png">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/tunnel-32.png">
   <link rel="apple-touch-icon" href="/static/tunnel.png">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js"></script>
   {{ block "head" . }}{{ end }}
 </head>
 <body>
@@ -16,6 +26,9 @@
     <div class="topbar-inner">
       <div class="brand">
         <a href="/">SISHC Tunnel Manager</a>
+      </div>
+      <div class="topbar-actions">
+        <a class="button secondary tiny" href="/settings" data-i18n="nav.settings">Settings</a>
       </div>
     </div>
   </header>
@@ -25,6 +38,7 @@
     {{ if eq .ContentTemplate "configRawContent" }}{{ template "configRawContent" . }}{{ end }}
     {{ if eq .ContentTemplate "tunnelFormContent" }}{{ template "tunnelFormContent" . }}{{ end }}
     {{ if eq .ContentTemplate "logsContent" }}{{ template "logsContent" . }}{{ end }}
+    {{ if eq .ContentTemplate "settingsContent" }}{{ template "settingsContent" . }}{{ end }}
   </main>
 </body>
 </html>

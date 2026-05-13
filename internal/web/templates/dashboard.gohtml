@@ -5,7 +5,7 @@
   <div class="panel-head">
     <div>
       <div class="dashboard-title">
-        <h1>Dashboard</h1>
+        <h1 data-i18n="dashboard.title">Dashboard</h1>
         <div class="statusbar">
           <span class="badge {{ if .Daemon }}ok{{ else }}bad{{ end }}" id="daemon-state">{{ if .Daemon }}online{{ else }}offline{{ end }}</span>
           <span class="muted" id="status-updated"></span>
@@ -13,9 +13,9 @@
       </div>
     </div>
     <div class="panel-actions">
-      <a class="button" href="/tunnels/new">Add tunnel</a>
-      <a class="button secondary" href="/config">Edit config</a>
-      <a class="button secondary" href="/logs/daemon">Logs</a>
+      <a class="button" href="/tunnels/new" data-i18n="dashboard.add_tunnel">Add tunnel</a>
+      <a class="button secondary" href="/config" data-i18n="dashboard.edit_config">Edit config</a>
+      <a class="button secondary" href="/logs/daemon" data-i18n="dashboard.logs">Logs</a>
     </div>
   </div>
   {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
@@ -25,19 +25,19 @@
 <section class="panel">
   <div class="panel-head">
     <div>
-      <h2>Tunnels</h2>
+      <h2 data-i18n="dashboard.tunnels">Tunnels</h2>
     </div>
   </div>
   <div class="table-wrap">
     <table class="table" id="tunnels-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>State</th>
-          <th>Local host</th>
-          <th>Local port</th>
-          <th>Remote</th>
-          <th class="actions">Actions</th>
+          <th data-i18n="dashboard.name">Name</th>
+          <th data-i18n="dashboard.state">State</th>
+          <th data-i18n="dashboard.local_host">Local host</th>
+          <th data-i18n="dashboard.local_port">Local port</th>
+          <th data-i18n="dashboard.remote">Remote</th>
+          <th class="actions" data-i18n="dashboard.actions">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -51,17 +51,17 @@
           <td class="actions">
             {{ if .Tunnel.Disabled }}
             <form method="post" action="/tunnels/{{ .Tunnel.Name }}/start">
-              <button class="button tiny" type="submit">Start</button>
+              <button class="button tiny" type="submit" data-i18n="dashboard.start">Start</button>
             </form>
             {{ else }}
             <form method="post" action="/tunnels/{{ .Tunnel.Name }}/stop">
-              <button class="button tiny warn" type="submit">Stop</button>
+              <button class="button tiny warn" type="submit" data-i18n="dashboard.stop">Stop</button>
             </form>
             {{ end }}
-            <a class="button tiny secondary" href="/tunnels/{{ .Tunnel.Name }}/edit">Edit</a>
-            <a class="button tiny" href="/logs/{{ .Tunnel.Name }}">Logs</a>
+            <a class="button tiny secondary" href="/tunnels/{{ .Tunnel.Name }}/edit" data-i18n="dashboard.edit">Edit</a>
+            <a class="button tiny" href="/logs/{{ .Tunnel.Name }}" data-i18n="dashboard.logs">Logs</a>
             <form method="post" action="/tunnels/{{ .Tunnel.Name }}/delete" onsubmit="return confirm('Delete {{ .Tunnel.Name }}?');">
-              <button class="button tiny bad" type="submit">Delete</button>
+              <button class="button tiny bad" type="submit" data-i18n="dashboard.delete">Delete</button>
             </form>
           </td>
         </tr>
@@ -73,21 +73,22 @@
 
 <script>
 (function() {
-  async function refreshStatus() {
-    try {
-      const res = await fetch('/api/status', {cache: 'no-store'});
-      const data = await res.json();
-      const banner = document.getElementById('daemon-state');
-      const stamp = document.getElementById('status-updated');
-      if (!data.ok) {
-        banner.textContent = 'offline';
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/status', {cache: 'no-store'});
+        const data = await res.json();
+        const t = window.sishcI18n ? window.sishcI18n.t : (v) => v;
+        const banner = document.getElementById('daemon-state');
+        const stamp = document.getElementById('status-updated');
+        if (!data.ok) {
+        banner.textContent = t('status.offline');
         banner.className = 'badge bad';
-        stamp.textContent = data.error || 'service offline';
+        stamp.textContent = data.error || t('status.service_offline');
         return;
       }
-      banner.textContent = 'online';
+      banner.textContent = t('status.online');
       banner.className = 'badge ok';
-      stamp.textContent = 'Updated ' + new Date().toLocaleTimeString();
+      stamp.textContent = t('status.updated') + ' ' + new Date().toLocaleTimeString();
       const rows = new Map((data.statuses || []).map(st => [st.name, st]));
       document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
         const name = row.getAttribute('data-name');
@@ -104,11 +105,12 @@
         remote.textContent = st.remote || '-';
       });
     } catch (err) {
+      const t = window.sishcI18n ? window.sishcI18n.t : (v) => v;
       const banner = document.getElementById('daemon-state');
       const stamp = document.getElementById('status-updated');
-      banner.textContent = 'offline';
+      banner.textContent = t('status.offline');
       banner.className = 'badge bad';
-      stamp.textContent = 'service unavailable';
+      stamp.textContent = t('status.service_unavailable');
     }
   }
   refreshStatus();

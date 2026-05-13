@@ -46,6 +46,10 @@ type DashboardPage struct {
 	Daemon          bool
 }
 
+type SettingsPage struct {
+	ContentTemplate string
+}
+
 type TunnelRow struct {
 	Tunnel             config.Tunnel
 	Effective          config.Tunnel
@@ -124,6 +128,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("POST /config", s.handleConfigPost)
 	mux.HandleFunc("GET /config/raw", s.handleConfigRawGet)
 	mux.HandleFunc("POST /config/raw", s.handleConfigRawPost)
+	mux.HandleFunc("GET /settings", s.handleSettingsGet)
 	mux.HandleFunc("GET /tunnels/new", s.handleTunnelNewGet)
 	mux.HandleFunc("POST /tunnels/new", s.handleTunnelNewPost)
 	mux.HandleFunc("GET /tunnels/{name}/edit", s.handleTunnelEditGet)
@@ -151,6 +156,10 @@ func (s *Server) Run(ctx context.Context) error {
 		return nil
 	}
 	return err
+}
+
+func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
+	s.render(w, "settings", SettingsPage{ContentTemplate: "settingsContent"})
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {

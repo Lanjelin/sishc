@@ -4,7 +4,7 @@
 <section class="panel form-panel">
   <div class="panel-head">
     <div>
-      <h1>{{ if .Title }}{{ .Title }}{{ else }}Tunnel{{ end }}</h1>
+      <h1 {{ if .IsEdit }}data-i18n="tunnel.edit_title"{{ else }}data-i18n="tunnel.add_title"{{ end }}>{{ if .Title }}{{ .Title }}{{ else }}Tunnel{{ end }}</h1>
     </div>
   </div>
   {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
@@ -12,19 +12,19 @@
   <form method="post" action="{{ .Action }}" class="form">
     <div class="kv-list">
       <div class="kv-row">
-        <label for="name">Name</label>
+        <label for="name" data-i18n="tunnel.name">Name</label>
         <input id="name" name="name" type="text" value="{{ .Tunnel.Name }}" placeholder="test1.example.com">
       </div>
       <div class="kv-row">
-        <label for="local_host">Local host</label>
+        <label for="local_host" data-i18n="tunnel.local_host">Local host</label>
         <input id="local_host" name="local_host" type="text" value="{{ .Tunnel.LocalHost }}" placeholder="{{ .Defaults.LocalHost }}">
       </div>
       <div class="kv-row">
-        <label for="local_port">Local port</label>
+        <label for="local_port" data-i18n="tunnel.local_port">Local port</label>
         <input id="local_port" name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.LocalPort }}" placeholder="{{ inputInt .Defaults.LocalPort }}">
       </div>
       <div class="kv-row">
-        <label for="local_protocol">Local protocol</label>
+        <label for="local_protocol" data-i18n="tunnel.local_protocol">Local protocol</label>
         <select id="local_protocol" name="local_protocol">
           <option value="" {{ selected .Tunnel.LocalProtocol "" }}>http</option>
           <option value="https" {{ selected .Tunnel.LocalProtocol "https" }}>https</option>
@@ -32,19 +32,19 @@
         </select>
       </div>
       <div class="kv-row">
-        <label for="remote_server">Remote server</label>
+        <label for="remote_server" data-i18n="tunnel.remote_server">Remote server</label>
         <input id="remote_server" name="remote_server" type="text" value="{{ .Tunnel.RemoteServer }}" placeholder="{{ .Defaults.RemoteServer }}">
       </div>
       <div class="kv-row">
-        <label for="remote_port">Remote port</label>
+        <label for="remote_port" data-i18n="tunnel.remote_port">Remote port</label>
         <input id="remote_port" name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.RemotePort }}" placeholder="{{ inputInt .Defaults.RemotePort }}">
       </div>
       <div class="kv-row">
-        <label for="ssh_key">SSH key</label>
+        <label for="ssh_key" data-i18n="tunnel.ssh_key">SSH key</label>
         <input id="ssh_key" name="ssh_key" type="text" value="{{ .Tunnel.SSHKey }}" placeholder="{{ .Defaults.SSHKey }}">
       </div>
       <div class="kv-row">
-        <label for="enabled">Enabled</label>
+        <label for="enabled" data-i18n="tunnel.enabled">Enabled</label>
         <select id="enabled" name="enabled">
           <option value="true" {{ if not .Tunnel.Disabled }}selected{{ end }}>true</option>
           <option value="false" {{ if .Tunnel.Disabled }}selected{{ end }}>false</option>
@@ -52,8 +52,8 @@
       </div>
     </div>
     <div class="panel-actions footer-actions">
-      <button class="button" type="submit">{{ if .Submit }}{{ .Submit }}{{ else }}Save tunnel{{ end }}</button>
-      <a class="button secondary" href="/">Cancel</a>
+      <button class="button" type="submit" data-i18n="tunnel.save">{{ if .Submit }}{{ .Submit }}{{ else }}Save tunnel{{ end }}</button>
+      <a class="button secondary" href="/" data-i18n="tunnel.cancel">Cancel</a>
     </div>
   </form>
 </section>
