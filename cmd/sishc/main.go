@@ -105,7 +105,7 @@ func runDaemon(ctx context.Context, args []string) error {
 			if err := runInit(ctx, []string{"--config", paths.configPath}, os.Stdin, os.Stdout); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "Starting daemon with %s\n", paths.configPath)
+			fmt.Fprintf(os.Stdout, "Starting daemon using %s\n", paths.configPath)
 			cfg, err = config.Load(paths.configPath)
 		} else {
 			return fmt.Errorf("config %q not found; run `sishc init --config %s`", paths.configPath, paths.configPath)
@@ -1051,7 +1051,7 @@ func initConfig(ctx context.Context, configPath string, in io.Reader, out io.Wri
 	if err := config.Save(configPath, cfg); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Wrote %s\n", configPath)
+	fmt.Fprintf(out, "Wrote config to %s\n", configPath)
 	return nil
 }
 
@@ -1098,7 +1098,7 @@ func promptRequiredInt(ctx context.Context, in io.Reader, out io.Writer, label s
 		if err == nil && n > 0 {
 			return n, nil
 		}
-		fmt.Fprintln(out, "Enter a number between 1 and 65535.")
+		fmt.Fprintln(out, "Enter a port between 1 and 65535.")
 	}
 }
 
@@ -1115,7 +1115,7 @@ func promptOptionalInt(ctx context.Context, in io.Reader, out io.Writer, label s
 		if err == nil && n > 0 {
 			return n, nil
 		}
-		fmt.Fprintln(out, "Enter a number between 1 and 65535, or leave blank.")
+		fmt.Fprintln(out, "Enter a port between 1 and 65535, or leave blank.")
 	}
 }
 
@@ -1159,7 +1159,7 @@ func promptYesNo(ctx context.Context, in io.Reader, out io.Writer, question stri
 		case "n", "no":
 			return false, nil
 		default:
-			fmt.Fprintln(out, "Please answer yes or no.")
+			fmt.Fprintln(out, "Please enter y or n.")
 		}
 	}
 }
@@ -1197,18 +1197,18 @@ func usageText() string {
   sishc <command> [flags]
 
 Commands:
-  daemon     Run the tunnel supervisor and control socket
+  daemon     Run the tunnel daemon
   status     Show tunnel status
-  logs       Show daemon or tunnel logs
+  logs       Show tunnel logs
   validate   Validate config and exit
   reconcile  Reconcile config now
-  add        Create a tunnel entry
-  update     Update an existing tunnel entry
-  remove     Remove a tunnel entry
+  add        Add a tunnel
+  update     Update a tunnel
+  remove     Remove a tunnel
   start      Enable a tunnel
   stop       Disable a tunnel
   oneoff     Run a temporary tunnel
-  init       Create a config interactively
+  init       Create config interactively
 
 Flags:
   --config PATH   Config file path
