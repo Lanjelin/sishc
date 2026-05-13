@@ -67,17 +67,26 @@ Example:
 ssh_key: "~/.ssh/id_rsa"
 remote_port: 1433
 remote_server: sish.example.com
-local_host: 127.0.0.1
-local_port: 6080
-local_protocol: http
+local_host: caddy
+local_port: 80
 
 tunnels:
-  - name: test1
-    local_port: 6080
+  - name: test1.example.com
   - name: test2
     enabled: false
-    local_host: localhost
-    local_port: 6081
+    local_host: example_host
+  - name: test3
+    local_port: 1443
+  - name: test4
+    local_host: example_host2
+    local_port: 3000
+    ssh_key: "~/.ssh/id_rsa2"
+    remote_server: sish2.example.com
+    remote_port: 1723
+  - name: "2512" # Expose ssh port to example.com:2512
+    local_host: 192.168.50.80
+    local_port: 22
+    local_protocol: tcp
 ```
 
 ## Logs
