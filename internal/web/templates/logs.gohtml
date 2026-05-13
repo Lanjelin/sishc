@@ -1,0 +1,35 @@
+{{ define "logs" }}{{ template "base" . }}{{ end }}
+
+{{ define "logsContent" }}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h1>Logs</h1>
+      <p class="muted">{{ .Name }}</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button secondary" href="/logs/{{ .Name }}?tail={{ .Tail }}">Refresh</a>
+      <a class="button secondary" href="/logs/{{ .Name }}?tail={{ .Tail }}{{ if .Follow }}&follow=0{{ else }}&follow=1{{ end }}">
+        {{ if .Follow }}Pause follow{{ else }}Follow{{ end }}
+      </a>
+    </div>
+  </div>
+  {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
+  {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
+  <pre id="log-output" class="log-output">{{ range .Lines }}{{ . }}
+{{ end }}</pre>
+</section>
+
+{{ if .Follow }}
+<script>
+(function() {
+  const box = document.getElementById('log-output');
+  const src = new EventSource('/logs/{{ .Name }}/stream?tail={{ .Tail }}');
+  src.addEventListener('line', function(ev) {
+    box.textContent += ev.data + '\n';
+    box.scrollTop = box.scrollHeight;
+  });
+})();
+</script>
+{{ end }}
+{{ end }}

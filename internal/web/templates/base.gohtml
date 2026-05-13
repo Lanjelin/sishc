@@ -1,0 +1,33 @@
+{{ define "base" }}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sishc</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  {{ block "head" . }}{{ end }}
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a href="/">sishc</a>
+    </div>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/config">Config</a>
+      <a href="/config/raw">Raw</a>
+      <a href="/tunnels/new">Add tunnel</a>
+      <a href="/logs/daemon">Logs</a>
+    </nav>
+  </header>
+  <main class="page">
+    {{ if eq .ContentTemplate "dashboardContent" }}{{ template "dashboardContent" . }}{{ end }}
+    {{ if eq .ContentTemplate "configContent" }}{{ template "configContent" . }}{{ end }}
+    {{ if eq .ContentTemplate "configRawContent" }}{{ template "configRawContent" . }}{{ end }}
+    {{ if eq .ContentTemplate "tunnelFormContent" }}{{ template "tunnelFormContent" . }}{{ end }}
+    {{ if eq .ContentTemplate "logsContent" }}{{ template "logsContent" . }}{{ end }}
+  </main>
+</body>
+</html>
+{{ end }}

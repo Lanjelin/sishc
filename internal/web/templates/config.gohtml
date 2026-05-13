@@ -1,0 +1,52 @@
+{{ define "config" }}{{ template "base" . }}{{ end }}
+
+{{ define "configContent" }}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h1>Global config</h1>
+      <p class="muted">These values apply to tunnels unless a tunnel overrides them.</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button secondary" href="/config/raw">Raw config</a>
+    </div>
+  </div>
+  {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
+  {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
+  <form method="post" action="/config" class="form">
+    <div class="grid">
+      <label>
+        <span>SSH key</span>
+        <input name="ssh_key" type="text" value="{{ .Config.SSHKey }}" placeholder="~/.ssh/id_rsa">
+      </label>
+      <label>
+        <span>Remote server</span>
+        <input name="remote_server" type="text" value="{{ .Config.RemoteServer }}" placeholder="sish.example.com">
+      </label>
+      <label>
+        <span>Remote port</span>
+        <input name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Config.RemotePort }}" placeholder="1433">
+      </label>
+      <label>
+        <span>Local host</span>
+        <input name="local_host" type="text" value="{{ .Config.LocalHost }}" placeholder="caddy">
+      </label>
+      <label>
+        <span>Local port</span>
+        <input name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Config.LocalPort }}" placeholder="80">
+      </label>
+      <label>
+        <span>Local protocol</span>
+        <select name="local_protocol">
+          <option value="" {{ selected .Config.LocalProtocol "" }}>http</option>
+          <option value="https" {{ selected .Config.LocalProtocol "https" }}>https</option>
+          <option value="tcp" {{ selected .Config.LocalProtocol "tcp" }}>tcp</option>
+        </select>
+      </label>
+    </div>
+    <div class="panel-actions">
+      <button class="button" type="submit">Save globals</button>
+    </div>
+  </form>
+</section>
+{{ end }}

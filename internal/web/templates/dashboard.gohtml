@@ -1,0 +1,122 @@
+{{ define "dashboard" }}{{ template "base" . }}{{ end }}
+
+{{ define "dashboardContent" }}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="muted">Daemon status and tunnel overview.</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button" href="/tunnels/new">Add tunnel</a>
+      <a class="button secondary" href="/config">Edit config</a>
+      <a class="button secondary" href="/logs/daemon">Daemon log</a>
+    </div>
+  </div>
+  {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
+  {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
+  <div class="statusbar">
+    <span class="badge {{ if .Daemon }}ok{{ else }}bad{{ end }}" id="daemon-state">{{ if .Daemon }}online{{ else }}offline{{ end }}</span>
+    <span class="muted" id="status-updated"></span>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Tunnels</h2>
+      <p class="muted">Changes are written to config and then reconciled by the daemon.</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table class="table" id="tunnels-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>State</th>
+          <th>Local host</th>
+          <th>Local port</th>
+          <th>Remote</th>
+          <th>Detail</th>
+          <th class="actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Rows }}
+        <tr data-name="{{ .Tunnel.Name }}">
+          <td class="mono">{{ .Tunnel.Name }}</td>
+          <td><span class="badge {{ statusClass .Status.State }}" data-field="state">{{ statusLabel .Status.State }}</span></td>
+          <td class="mono" data-field="host">{{ fieldValue .Status.LocalHost }}</td>
+          <td class="mono" data-field="port">{{ formatInt .Status.LocalPort }}</td>
+          <td class="mono" data-field="remote">{{ remoteDisplay .Status }}</td>
+          <td data-field="detail">{{ statusSummary .Status }}</td>
+          <td class="actions">
+            <a class="button tiny" href="/logs/{{ .Tunnel.Name }}">Logs</a>
+            <a class="button tiny secondary" href="/tunnels/{{ .Tunnel.Name }}/edit">Edit</a>
+            {{ if .Tunnel.Disabled }}
+            <form method="post" action="/tunnels/{{ .Tunnel.Name }}/start">
+              <button class="button tiny" type="submit">Start</button>
+            </form>
+            {{ else }}
+            <form method="post" action="/tunnels/{{ .Tunnel.Name }}/stop">
+              <button class="button tiny warn" type="submit">Stop</button>
+            </form>
+            {{ end }}
+            <form method="post" action="/tunnels/{{ .Tunnel.Name }}/delete" onsubmit="return confirm('Delete {{ .Tunnel.Name }}?');">
+              <button class="button tiny bad" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+(function() {
+  async function refreshStatus() {
+    try {
+      const res = await fetch('/api/status', {cache: 'no-store'});
+      const data = await res.json();
+      const banner = document.getElementById('daemon-state');
+      const stamp = document.getElementById('status-updated');
+      if (!data.ok) {
+        banner.textContent = 'offline';
+        banner.className = 'badge bad';
+        stamp.textContent = data.error || 'daemon offline';
+        return;
+      }
+      banner.textContent = 'online';
+      banner.className = 'badge ok';
+      stamp.textContent = 'Updated ' + new Date().toLocaleTimeString();
+      const rows = new Map((data.statuses || []).map(st => [st.name, st]));
+      document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
+        const name = row.getAttribute('data-name');
+        const st = rows.get(name);
+        if (!st) return;
+        const state = row.querySelector('[data-field="state"]');
+        const host = row.querySelector('[data-field="host"]');
+        const port = row.querySelector('[data-field="port"]');
+        const remote = row.querySelector('[data-field="remote"]');
+        const detail = row.querySelector('[data-field="detail"]');
+        state.textContent = st.state || '-';
+        state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
+        host.textContent = st.local_host || '-';
+        port.textContent = st.local_port || '-';
+        remote.textContent = st.remote || '-';
+        detail.textContent = st.detail || st.state || '-';
+      });
+    } catch (err) {
+      const banner = document.getElementById('daemon-state');
+      const stamp = document.getElementById('status-updated');
+      banner.textContent = 'offline';
+      banner.className = 'badge bad';
+      stamp.textContent = 'daemon unavailable';
+    }
+  }
+  refreshStatus();
+  setInterval(refreshStatus, 5000);
+})();
+</script>
+{{ end }}
