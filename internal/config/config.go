@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	DefaultPort = 5000
+	DefaultPort      = 5000
+	DefaultWebListen = "127.0.0.1:5000"
 )
 
 type Tunnel struct {
@@ -34,6 +35,8 @@ type Config struct {
 	LocalPort     int      `yaml:"local_port,omitempty"`
 	RemotePort    int      `yaml:"remote_port,omitempty"`
 	RemoteServer  string   `yaml:"remote_server,omitempty"`
+	WebEnabled    bool     `yaml:"web_enabled,omitempty"`
+	WebListen     string   `yaml:"web_listen,omitempty"`
 	Tunnels       []Tunnel `yaml:"tunnels,omitempty"`
 }
 
@@ -119,6 +122,8 @@ func Save(path string, cfg Config) error {
 	writeIntField(&b, "local_port", cfg.LocalPort)
 	writeIntField(&b, "remote_port", cfg.RemotePort)
 	writeScalarField(&b, "remote_server", cfg.RemoteServer)
+	writeBoolField(&b, "web_enabled", cfg.WebEnabled)
+	writeScalarField(&b, "web_listen", cfg.WebListen)
 	if len(cfg.Tunnels) > 0 {
 		b.WriteString("tunnels:\n")
 		for _, tunnel := range cfg.Tunnels {
@@ -368,6 +373,13 @@ func (c Config) Validate() error {
 	if c.RemoteServer != "" && !validHost(c.RemoteServer) {
 		errs = append(errs, fmt.Errorf("remote_server %q is not a valid hostname or IP address", c.RemoteServer))
 	}
+	if c.WebEnabled {
+		if listen := c.EffectiveWebListen(); listen != "" {
+			if _, _, err := net.SplitHostPort(listen); err != nil {
+				errs = append(errs, fmt.Errorf("web_listen %q is not a valid host:port", listen))
+			}
+		}
+	}
 
 	for i, tunnel := range c.Tunnels {
 		effective := c.EffectiveTunnel(tunnel)
@@ -395,6 +407,13 @@ func (c Config) Validate() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (c Config) EffectiveWebListen() string {
+	if strings.TrimSpace(c.WebListen) == "" {
+		return DefaultWebListen
+	}
+	return strings.TrimSpace(c.WebListen)
 }
 
 func validatePort(port int, field string) error {
@@ -543,6 +562,14 @@ func assignConfigField(cfg *Config, key, value string) error {
 		cfg.RemotePort = n
 	case "remote_server":
 		cfg.RemoteServer = parseString(value)
+	case "web_enabled":
+		b, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.WebEnabled = b
+	case "web_listen":
+		cfg.WebListen = parseString(value)
 	default:
 		return fmt.Errorf("unknown config key %q", key)
 	}
@@ -670,6 +697,13 @@ func writeIntField(b *strings.Builder, key string, value int) {
 		return
 	}
 	b.WriteString(fmt.Sprintf("%s: %d\n", key, value))
+}
+
+func writeBoolField(b *strings.Builder, key string, value bool) {
+	if !value {
+		return
+	}
+	b.WriteString(fmt.Sprintf("%s: %t\n", key, value))
 }
 
 func writeTunnelField(b *strings.Builder, key, value string) {

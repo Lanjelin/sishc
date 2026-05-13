@@ -53,8 +53,6 @@ func main() {
 		err = runReconcile(args)
 	case "logs":
 		err = runLogs(ctx, args)
-	case "web":
-		err = runWeb(ctx, args)
 	case "add":
 		err = runAdd(args)
 	case "update":
@@ -123,7 +121,7 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 
 	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logDir, nil)
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 	go func() {
 		if err := supervisor.Run(ctx); err != nil && err != context.Canceled {
 			errCh <- err
@@ -134,6 +132,17 @@ func runDaemon(ctx context.Context, args []string) error {
 			errCh <- err
 		}
 	}()
+	if cfg.WebEnabled {
+		webListen := cfg.EffectiveWebListen()
+		if logger := supervisor.Logger(); logger != nil {
+			logger.Printf("web ui listening on %s", webListen)
+		}
+		go func() {
+			if err := sishweb.New(paths.configPath, paths.logDir, paths.socketPath, webListen).Run(ctx); err != nil && err != context.Canceled {
+				errCh <- err
+			}
+		}()
+	}
 
 	select {
 	case <-ctx.Done():
@@ -245,68 +254,6 @@ func runReconcile(args []string) error {
 	return nil
 }
 
-func runWeb(ctx context.Context, args []string) error {
-	listen, paths, err := parseWebArgs(args)
-	if err != nil {
-		return err
-	}
-	if err := ensureDaemonRunningForWeb(ctx, paths); err != nil {
-		return err
-	}
-	return sishweb.New(paths.configPath, paths.logDir, paths.socketPath, listen).Run(ctx)
-}
-
-func ensureDaemonRunningForWeb(ctx context.Context, paths pathConfig) error {
-	if resp, err := control.Do(paths.socketPath, control.Request{Command: "status"}); err == nil && resp.OK {
-		return nil
-	}
-
-	cfg, err := config.Load(paths.configPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("config %q not found; run `sishc init --config %s`", paths.configPath, paths.configPath)
-		}
-		return fmt.Errorf("config %q: %w", paths.configPath, err)
-	}
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("config %q: %w", paths.configPath, err)
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	cmd := exec.CommandContext(ctx, exe, "daemon", "--config", paths.configPath, "--log-dir", paths.logDir, "--socket", paths.socketPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	exitCh := make(chan error, 1)
-	go func() {
-		exitCh <- cmd.Wait()
-	}()
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-exitCh:
-			if err != nil {
-				return fmt.Errorf("daemon exited before web started: %w", err)
-			}
-			return fmt.Errorf("daemon exited before web started")
-		case <-ticker.C:
-			if resp, err := control.Do(paths.socketPath, control.Request{Command: "status"}); err == nil && resp.OK {
-				return nil
-			}
-		}
-	}
-}
-
 func runLogs(ctx context.Context, args []string) error {
 	name, follow, tail, paths, err := parseLogsArgs(args)
 	if err != nil {
@@ -375,26 +322,6 @@ func parseLogsArgs(args []string) (string, bool, int, pathConfig, error) {
 	}
 	return rest[0], *follow, *tail, pathConfig{
 		logDir: *logDir,
-	}, nil
-}
-
-func parseWebArgs(args []string) (string, pathConfig, error) {
-	fs := flag.NewFlagSet("sishc web", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
-	logDir := fs.String("log-dir", config.DefaultLogDir(), "log directory path")
-	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
-	listen := fs.String("listen", "127.0.0.1:5000", "listen address")
-	if err := fs.Parse(args); err != nil {
-		return "", pathConfig{}, err
-	}
-	if len(fs.Args()) != 0 {
-		return "", pathConfig{}, fmt.Errorf("usage: sishc web [--listen HOST:PORT]")
-	}
-	return *listen, pathConfig{
-		configPath: *configPath,
-		logDir:     *logDir,
-		socketPath: *socketPath,
 	}, nil
 }
 
@@ -1323,7 +1250,6 @@ Commands:
   daemon     Run the tunnel daemon
   status     Show tunnel status
   logs       Show tunnel logs
-  web        Run the web UI and daemon
   validate   Validate config and exit
   reconcile  Reconcile config now
   add        Add a tunnel
@@ -1350,10 +1276,10 @@ Special forms:
   update:      [tunnel flags] [--new-name NAME] <name> [<local_host>][:<local_port>]
   status:      [--verbose] [<name>]
   logs:        [--tail N] [--follow] <name|daemon>
-  web:         [--listen HOST:PORT] (starts daemon if needed)
   oneoff:      [tunnel flags] [<name>] [<local_host>:]<local_port>
 
 Notes:
+  web: controlled by web_enabled and web_listen in config.yaml
   add/update:
     - omit both host and port to use globals
     - host only uses global port

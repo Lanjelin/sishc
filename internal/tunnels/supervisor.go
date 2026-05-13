@@ -599,6 +599,12 @@ func (s *Supervisor) SetLogger(logger *log.Logger) {
 	s.logger = logger
 }
 
+func (s *Supervisor) Logger() *log.Logger {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.logger
+}
+
 func (s *Supervisor) lifecyclef(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	if s.logger != nil {

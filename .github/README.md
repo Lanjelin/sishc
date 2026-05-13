@@ -101,5 +101,11 @@ tunnels:
 
 ## Web UI
 
-The web UI is intentionally not part of the current daemon-first build.
-It will be documented here again when it is rebuilt on top of the CLI daemon.
+The daemon can start the web UI automatically when these config keys are set:
+
+```yaml
+web_enabled: true
+web_listen: 127.0.0.1:5000
+```
+
+If `web_enabled` is false or omitted, the daemon runs tunnels only.

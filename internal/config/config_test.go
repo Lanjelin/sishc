@@ -18,6 +18,8 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		LocalPort:     8080,
 		RemotePort:    2222,
 		RemoteServer:  "example.com",
+		WebEnabled:    true,
+		WebListen:     "127.0.0.1:5000",
 		Tunnels: []Tunnel{
 			{
 				Name:          "first_tunnel",
@@ -41,7 +43,8 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 
 	if got.SSHKey != want.SSHKey || got.LocalProtocol != want.LocalProtocol || got.LocalHost != want.LocalHost ||
-		got.LocalPort != want.LocalPort || got.RemotePort != want.RemotePort || got.RemoteServer != want.RemoteServer {
+		got.LocalPort != want.LocalPort || got.RemotePort != want.RemotePort || got.RemoteServer != want.RemoteServer ||
+		got.WebEnabled != want.WebEnabled || got.WebListen != want.WebListen {
 		t.Fatalf("round-trip mismatch: got %+v want %+v", got, want)
 	}
 	if len(got.Tunnels) != 1 || got.Tunnels[0].Name != "first_tunnel" {

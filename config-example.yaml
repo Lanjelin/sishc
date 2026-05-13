@@ -3,6 +3,8 @@ remote_port: 1433
 remote_server: sish.example.com
 local_host: caddy
 local_port: 80
+web_enabled: true
+web_listen: 127.0.0.1:5000
 
 tunnels:
   - name: test1.example.com
