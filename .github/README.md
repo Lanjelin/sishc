@@ -3,6 +3,10 @@
 `sishc` is a daemon-first CLI for managing [sish](https://docs.ssi.sh/) tunnels.
 It reads a config file as source of truth, keeps tunnels reconciled in the background, and exposes a Unix socket for `status` and `reconcile`.
 
+Runtime dependencies:
+- `autossh`
+- `ssh`
+
 ## What it does
 
 - runs tunnels as a long-lived daemon
