@@ -401,10 +401,12 @@ func (s *Server) handleLogsGet(w http.ResponseWriter, r *http.Request) {
 	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines)}
 	if err != nil {
 		if os.IsNotExist(err) {
-			page.Message = "Log file not found yet."
+			page.Message = "No log file yet."
 		} else {
 			page.Error = err.Error()
 		}
+	} else if len(lines) == 0 {
+		page.Message = "Log file empty."
 	}
 	s.render(w, "logs", page)
 }
@@ -423,8 +425,8 @@ func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	}
 	lines, err := readTail(path, tail)
 	if err == nil {
-		for _, line := range lines {
-			writeSSE(w, "line", string(renderLogLine(line)))
+		for _, line := range renderLogLines(lines) {
+			writeSSE(w, "line", string(line))
 		}
 		flusher.Flush()
 	}
@@ -778,7 +780,8 @@ func renderLogLines(lines []string) []template.HTML {
 		return nil
 	}
 	rendered := make([]template.HTML, 0, len(lines))
-	for _, line := range lines {
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
 		rendered = append(rendered, renderLogLine(line))
 	}
 	return rendered

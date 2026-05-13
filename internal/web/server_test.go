@@ -22,3 +22,17 @@ func TestRenderLogLinePreservesANSIFormatting(t *testing.T) {
 		t.Fatalf("rendered output lost log text: %q", rendered)
 	}
 }
+
+func TestRenderLogLinesReverseOrder(t *testing.T) {
+	lines := []string{"oldest", "middle", "newest"}
+	rendered := renderLogLines(lines)
+	if len(rendered) != 3 {
+		t.Fatalf("len(rendered) = %d, want 3", len(rendered))
+	}
+	if got := string(rendered[0]); got != "newest" {
+		t.Fatalf("rendered[0] = %q, want newest", got)
+	}
+	if got := string(rendered[2]); got != "oldest" {
+		t.Fatalf("rendered[2] = %q, want oldest", got)
+	}
+}
