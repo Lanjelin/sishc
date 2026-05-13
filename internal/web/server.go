@@ -413,7 +413,6 @@ func (s *Server) handleLogsGet(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	tail := queryInt(r, "tail", 100)
 	path := s.logPath(name)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -422,13 +421,6 @@ func (s *Server) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
-	}
-	lines, err := readTail(path, tail)
-	if err == nil {
-		for _, line := range renderLogLines(lines) {
-			writeSSE(w, "line", string(line))
-		}
-		flusher.Flush()
 	}
 	info, err := os.Stat(path)
 	start := int64(0)

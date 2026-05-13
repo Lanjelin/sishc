@@ -24,7 +24,7 @@
 <script>
 (function() {
   const box = document.getElementById('log-output');
-  const src = new EventSource('/logs/{{ .Name }}/stream?tail={{ .Tail }}');
+  const src = new EventSource('/logs/{{ .Name }}/stream');
   src.addEventListener('line', function(ev) {
     box.insertAdjacentHTML('afterbegin', ev.data + '\n');
   });
