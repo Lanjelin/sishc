@@ -19,20 +19,23 @@ a { color: var(--link); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
+  border-bottom: 1px solid var(--line);
   background: rgba(15, 17, 21, 0.95);
   backdrop-filter: blur(10px);
   z-index: 10;
 }
 
-.brand a { font-weight: 700; font-size: 1.15rem; color: var(--text); letter-spacing: 0.03em; }
+.topbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.brand a { display: inline-block; font-weight: 700; font-size: 1.75rem; line-height: 1.1; padding-top: .08rem; color: var(--text); letter-spacing: 0.02em; }
 .nav { display: flex; flex-wrap: wrap; gap: .9rem; }
 .nav a { color: var(--muted); }
 .page { max-width: 1400px; margin: 0 auto; padding: 1rem; display: grid; gap: 1rem; }
@@ -241,10 +244,15 @@ textarea.code {
 
 @media (max-width: 840px) {
   .topbar { position: static; flex-direction: column; align-items: start; }
+  .brand a { font-size: 1.45rem; }
   .panel { border-radius: 14px; }
   table.table { min-width: 900px; }
   table.table td.actions { display: block; }
   .kv-row { grid-template-columns: 1fr; gap: .35rem; }
   .footer-actions { justify-content: stretch; }
   .footer-actions .button { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .brand a { font-size: 1.35rem; }
 }
