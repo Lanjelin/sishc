@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sort"
@@ -114,6 +115,9 @@ func runDaemon(ctx context.Context, args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("config validation error: %w", err)
 	}
+	if err := preflightDependencies(); err != nil {
+		return err
+	}
 
 	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logDir, nil)
 	errCh := make(chan error, 2)
@@ -156,6 +160,27 @@ func acquireConfigLock(configPath string) (*os.File, error) {
 		return nil, fmt.Errorf("another daemon is already running for %s", configPath)
 	}
 	return f, nil
+}
+
+func preflightDependencies() error {
+	var missing []string
+	if _, err := execLookPath("autossh"); err != nil {
+		missing = append(missing, "autossh")
+	}
+	if _, err := execLookPath("ssh"); err != nil {
+		missing = append(missing, "ssh")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	for _, name := range missing {
+		fmt.Fprintf(os.Stderr, "missing dependency: %s\n", name)
+	}
+	return fmt.Errorf("required tunnel dependencies are missing")
+}
+
+var execLookPath = func(file string) (string, error) {
+	return exec.LookPath(file)
 }
 
 func runStatus(args []string) error {

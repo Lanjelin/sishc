@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -509,5 +510,47 @@ func TestAcquireConfigLockPreventsSecondDaemon(t *testing.T) {
 
 	if _, err := acquireConfigLock(cfgPath); err == nil || !strings.Contains(err.Error(), "another daemon is already running") {
 		t.Fatalf("acquireConfigLock() second call error = %v, want busy error", err)
+	}
+}
+
+func TestPreflightDependenciesReportsEachMissingBinary(t *testing.T) {
+	orig := execLookPath
+	defer func() { execLookPath = orig }()
+	execLookPath = func(file string) (string, error) {
+		return "", os.ErrNotExist
+	}
+
+	var stderr bytes.Buffer
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Pipe() error = %v", err)
+	}
+	os.Stderr = w
+	defer func() {
+		os.Stderr = oldStderr
+	}()
+
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+
+	err = preflightDependencies()
+	_ = w.Close()
+	got := <-done
+	if err == nil {
+		t.Fatal("preflightDependencies() error = nil, want missing dependency error")
+	}
+	if !strings.Contains(got, "missing dependency: autossh") {
+		t.Fatalf("stderr = %q, want autossh message", got)
+	}
+	if !strings.Contains(got, "missing dependency: ssh") {
+		t.Fatalf("stderr = %q, want ssh message", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr buffer contents: %q", stderr.String())
 	}
 }

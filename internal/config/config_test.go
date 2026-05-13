@@ -124,11 +124,11 @@ func TestLoadExampleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if len(got.Tunnels) != 3 {
-		t.Fatalf("Load() tunnels = %d, want 3", len(got.Tunnels))
+	if len(got.Tunnels) != 5 {
+		t.Fatalf("Load() tunnels = %d, want 5", len(got.Tunnels))
 	}
-	if got.Tunnels[2].Disabled != false {
-		t.Fatalf("Load() tunnel disabled mismatch: %+v", got.Tunnels[2])
+	if got.Tunnels[1].Disabled != true {
+		t.Fatalf("Load() tunnel disabled mismatch: %+v", got.Tunnels[1])
 	}
 }
 
