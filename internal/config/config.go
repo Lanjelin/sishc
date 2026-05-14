@@ -409,6 +409,22 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
+func (c Config) ValidateRequiredGlobals() error {
+	var errs []error
+
+	if strings.TrimSpace(c.SSHKey) == "" {
+		errs = append(errs, fmt.Errorf("ssh_key is required"))
+	}
+	if c.RemotePort == 0 {
+		errs = append(errs, fmt.Errorf("remote_port is required"))
+	}
+	if strings.TrimSpace(c.RemoteServer) == "" {
+		errs = append(errs, fmt.Errorf("remote_server is required"))
+	}
+
+	return errors.Join(errs...)
+}
+
 func (c Config) EffectiveWebListen() string {
 	if strings.TrimSpace(c.WebListen) == "" {
 		return DefaultWebListen

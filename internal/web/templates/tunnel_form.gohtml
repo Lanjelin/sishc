@@ -13,15 +13,15 @@
     <div class="kv-list">
       <div class="kv-row">
         <label for="name" data-i18n="tunnel.name">Name</label>
-        <input id="name" name="name" type="text" value="{{ .Tunnel.Name }}" placeholder="test1.example.com">
+        <input id="name" name="name" type="text" value="{{ .Tunnel.Name }}">
       </div>
       <div class="kv-row">
         <label for="local_host" data-i18n="tunnel.local_host">Local host</label>
-        <input id="local_host" name="local_host" type="text" value="{{ .Tunnel.LocalHost }}" placeholder="{{ .Defaults.LocalHost }}">
+        <input id="local_host" name="local_host" type="text" value="{{ .Tunnel.LocalHost }}"{{ if .Defaults.LocalHost }} placeholder="{{ .Defaults.LocalHost }}"{{ end }}>
       </div>
       <div class="kv-row">
         <label for="local_port" data-i18n="tunnel.local_port">Local port</label>
-        <input id="local_port" name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.LocalPort }}" placeholder="{{ inputInt .Defaults.LocalPort }}">
+        <input id="local_port" name="local_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.LocalPort }}"{{ if .Defaults.LocalPort }} placeholder="{{ inputInt .Defaults.LocalPort }}"{{ end }}>
       </div>
       <div class="kv-row">
         <label for="local_protocol" data-i18n="tunnel.local_protocol">Local protocol</label>
@@ -33,15 +33,15 @@
       </div>
       <div class="kv-row">
         <label for="remote_server" data-i18n="tunnel.remote_server">Remote server</label>
-        <input id="remote_server" name="remote_server" type="text" value="{{ .Tunnel.RemoteServer }}" placeholder="{{ .Defaults.RemoteServer }}">
+        <input id="remote_server" name="remote_server" type="text" value="{{ .Tunnel.RemoteServer }}"{{ if .Defaults.RemoteServer }} placeholder="{{ .Defaults.RemoteServer }}"{{ end }}>
       </div>
       <div class="kv-row">
         <label for="remote_port" data-i18n="tunnel.remote_port">Remote port</label>
-        <input id="remote_port" name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.RemotePort }}" placeholder="{{ inputInt .Defaults.RemotePort }}">
+        <input id="remote_port" name="remote_port" type="number" min="1" max="65535" value="{{ inputInt .Tunnel.RemotePort }}"{{ if .Defaults.RemotePort }} placeholder="{{ inputInt .Defaults.RemotePort }}"{{ end }}>
       </div>
       <div class="kv-row">
         <label for="ssh_key" data-i18n="tunnel.ssh_key">SSH key</label>
-        <input id="ssh_key" name="ssh_key" type="text" value="{{ .Tunnel.SSHKey }}" placeholder="{{ .Defaults.SSHKey }}">
+        <input id="ssh_key" name="ssh_key" type="text" value="{{ .Tunnel.SSHKey }}"{{ if .Defaults.SSHKey }} placeholder="{{ .Defaults.SSHKey }}"{{ end }}>
       </div>
       <div class="kv-row">
         <label for="enabled" data-i18n="tunnel.enabled">Enabled</label>

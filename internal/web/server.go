@@ -226,6 +226,10 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 	cfg.RemoteServer = strings.TrimSpace(r.FormValue("remote_server"))
 	cfg.WebEnabled = strings.EqualFold(strings.TrimSpace(r.FormValue("web_enabled")), "true")
 	cfg.WebListen = strings.TrimSpace(r.FormValue("web_listen"))
+	if err := cfg.ValidateRequiredGlobals(); err != nil {
+		s.renderError(w, "config", err.Error())
+		return
+	}
 	if err := cfg.Validate(); err != nil {
 		s.renderError(w, "config", err.Error())
 		return
@@ -595,18 +599,18 @@ func buildTunnelFromForm(cfg config.Config, existing *config.Tunnel, r *http.Req
 
 	if value := strings.TrimSpace(r.FormValue("ssh_key")); value != "" {
 		tunnel.SSHKey = value
+	} else if existing != nil {
+		tunnel.SSHKey = ""
 	}
-	if value := normalizeProtocol(r.FormValue("local_protocol")); value != "" || existing == nil {
-		if existing != nil && value == "" && r.FormValue("local_protocol") == "" {
-			// keep existing value
-		} else {
-			tunnel.LocalProtocol = value
-		}
+	if raw := r.FormValue("local_protocol"); raw != "" {
+		tunnel.LocalProtocol = normalizeProtocol(raw)
+	} else if existing != nil {
+		tunnel.LocalProtocol = ""
 	}
 	if value := strings.TrimSpace(r.FormValue("local_host")); value != "" {
 		tunnel.LocalHost = value
-	} else if existing == nil && tunnel.LocalHost == "" {
-		tunnel.LocalHost = cfg.LocalHost
+	} else if existing != nil {
+		tunnel.LocalHost = ""
 	}
 	if value := strings.TrimSpace(r.FormValue("local_port")); value != "" {
 		port, err := parseFormInt(value)
@@ -614,8 +618,8 @@ func buildTunnelFromForm(cfg config.Config, existing *config.Tunnel, r *http.Req
 			return config.Tunnel{}, err
 		}
 		tunnel.LocalPort = port
-	} else if existing == nil && tunnel.LocalPort == 0 {
-		tunnel.LocalPort = cfg.LocalPort
+	} else if existing != nil {
+		tunnel.LocalPort = 0
 	}
 	if value := strings.TrimSpace(r.FormValue("remote_port")); value != "" {
 		port, err := parseFormInt(value)
@@ -623,13 +627,13 @@ func buildTunnelFromForm(cfg config.Config, existing *config.Tunnel, r *http.Req
 			return config.Tunnel{}, err
 		}
 		tunnel.RemotePort = port
-	} else if existing == nil && tunnel.RemotePort == 0 {
-		tunnel.RemotePort = cfg.RemotePort
+	} else if existing != nil {
+		tunnel.RemotePort = 0
 	}
 	if value := strings.TrimSpace(r.FormValue("remote_server")); value != "" {
 		tunnel.RemoteServer = value
-	} else if existing == nil && tunnel.RemoteServer == "" {
-		tunnel.RemoteServer = cfg.RemoteServer
+	} else if existing != nil {
+		tunnel.RemoteServer = ""
 	}
 	if existing == nil {
 		tunnel.Enabled = boolPtr(true)

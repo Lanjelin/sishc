@@ -71,6 +71,26 @@ func TestValidateRejectsInvalidPorts(t *testing.T) {
 	}
 }
 
+func TestValidateRequiredGlobalsRejectsMissingValues(t *testing.T) {
+	cfg := Config{}
+
+	if err := cfg.ValidateRequiredGlobals(); err == nil {
+		t.Fatal("ValidateRequiredGlobals() error = nil, want error")
+	}
+}
+
+func TestValidateRequiredGlobalsAcceptsValidValues(t *testing.T) {
+	cfg := Config{
+		SSHKey:       "~/.ssh/id_rsa",
+		RemotePort:   1433,
+		RemoteServer: "example.com",
+	}
+
+	if err := cfg.ValidateRequiredGlobals(); err != nil {
+		t.Fatalf("ValidateRequiredGlobals() error = %v", err)
+	}
+}
+
 func TestDefaultPathsRespectEnv(t *testing.T) {
 	t.Setenv("SISHC_CONFIG_FILE", "/tmp/test-config.yaml")
 	t.Setenv("SISHC_LOG_DIR", "/tmp/test-logs")
