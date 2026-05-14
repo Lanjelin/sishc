@@ -47,7 +47,7 @@
           <td><span class="badge {{ statusClass .Status.State }}" data-field="state">{{ statusLabel .Status.State }}</span></td>
           <td class="mono{{ if .InheritedLocalHost }} derived{{ end }}" data-field="host">{{ fieldValue .Status.LocalHost }}</td>
           <td class="mono{{ if .InheritedLocalPort }} derived{{ end }}" data-field="port">{{ formatInt .Status.LocalPort }}</td>
-          <td class="mono" data-field="remote">{{ remoteDisplay .Status }}</td>
+          <td class="mono" data-field="remote">{{ $remote := remoteDisplay .Status }}{{ $link := remoteLink $remote }}{{ if $link }}<a href="{{ $link }}" target="_blank" rel="noopener noreferrer">{{ $remote }}</a>{{ else }}{{ $remote }}{{ end }}</td>
           <td class="actions">
             {{ if .Tunnel.Disabled }}
             <form method="post" action="/tunnels/{{ .Tunnel.Name }}/start">
@@ -102,7 +102,19 @@
         state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
         host.textContent = st.local_host || '-';
         port.textContent = st.local_port || '-';
-        remote.textContent = st.remote || '-';
+        const remoteText = st.remote || '-';
+        const remoteLink = remoteText.startsWith('http://') || remoteText.startsWith('https://') ? remoteText : (remoteText.includes('.') ? 'https://' + remoteText : '');
+        remote.textContent = '';
+        if (remoteLink) {
+          const a = document.createElement('a');
+          a.href = remoteLink;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = remoteText;
+          remote.appendChild(a);
+        } else {
+          remote.textContent = remoteText;
+        }
       });
     } catch (err) {
       const t = window.sishcI18n ? window.sishcI18n.t : (v) => v;

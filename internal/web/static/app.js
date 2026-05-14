@@ -856,7 +856,7 @@
           state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
           host.textContent = st.local_host || '-';
           port.textContent = st.local_port || '-';
-          remote.textContent = st.remote || '-';
+          renderRemoteCell(remote, st.remote || '-');
         });
       } catch (err) {
         banner.textContent = t('status.offline');
@@ -867,6 +867,39 @@
 
     refreshStatus();
     setInterval(refreshStatus, 5000);
+  }
+
+  function remoteHref(remoteText) {
+    const value = (remoteText || '').trim();
+    if (!value) {
+      return '';
+    }
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    if (value.includes('://')) {
+      return '';
+    }
+    if (value.includes('.')) {
+      return 'https://' + value;
+    }
+    return '';
+  }
+
+  function renderRemoteCell(cell, remoteText) {
+    const value = remoteText || '-';
+    const href = remoteHref(value);
+    cell.textContent = '';
+    if (!href) {
+      cell.textContent = value;
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = value;
+    cell.appendChild(link);
   }
 
   function bindLogs() {

@@ -109,6 +109,7 @@ func New(configPath, logDir, socketPath, listen string) *Server {
 		"formatTime":    formatTime,
 		"tunnelLabel":   tunnelLabel,
 		"remoteDisplay": remoteDisplay,
+		"remoteLink":    remoteLink,
 		"protocolLabel": protocolLabel,
 	}
 	tmpl := template.Must(template.New("").Funcs(funcs).ParseFS(assets, "templates/*.gohtml"))
@@ -1016,6 +1017,23 @@ func remoteDisplay(st tunnels.Status) string {
 		return "-"
 	}
 	return st.Remote
+}
+
+func remoteLink(remote string) string {
+	remote = strings.TrimSpace(remote)
+	if remote == "" {
+		return ""
+	}
+	if strings.HasPrefix(remote, "http://") || strings.HasPrefix(remote, "https://") {
+		return remote
+	}
+	if strings.Contains(remote, "://") {
+		return ""
+	}
+	if strings.Contains(remote, ".") {
+		return "https://" + remote
+	}
+	return ""
 }
 
 func protocolLabel(value string) string {
