@@ -825,8 +825,13 @@
     const banner = document.getElementById('daemon-state');
     const stamp = document.getElementById('status-updated');
     const table = document.getElementById('tunnels-table');
-    if (!banner || !stamp || !table) {
+    if (!banner || !stamp) {
       return;
+    }
+
+    function updateStamp(now) {
+      stamp.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      stamp.title = now.toLocaleString();
     }
 
     async function refreshStatus() {
@@ -838,26 +843,29 @@
           banner.textContent = t('status.offline');
           banner.className = 'badge bad';
           stamp.textContent = data.error || t('status.service_offline');
+          stamp.title = data.error || t('status.service_offline');
           return;
         }
         banner.textContent = t('status.online');
         banner.className = 'badge ok';
-        stamp.textContent = t('status.updated') + ' ' + new Date().toLocaleTimeString();
-        const rows = new Map((data.statuses || []).map(st => [st.name, st]));
-        document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
-          const name = row.getAttribute('data-name');
-          const st = rows.get(name);
-          if (!st) return;
-          const state = row.querySelector('[data-field="state"]');
-          const host = row.querySelector('[data-field="host"]');
-          const port = row.querySelector('[data-field="port"]');
-          const remote = row.querySelector('[data-field="remote"]');
-          state.textContent = st.state || '-';
-          state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
-          host.textContent = st.local_host || '-';
-          port.textContent = st.local_port || '-';
-          renderRemoteCell(remote, st.remote || '-');
-        });
+        updateStamp(new Date());
+        if (table) {
+          const rows = new Map((data.statuses || []).map(st => [st.name, st]));
+          document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
+            const name = row.getAttribute('data-name');
+            const st = rows.get(name);
+            if (!st) return;
+            const state = row.querySelector('[data-field="state"]');
+            const host = row.querySelector('[data-field="host"]');
+            const port = row.querySelector('[data-field="port"]');
+            const remote = row.querySelector('[data-field="remote"]');
+            state.textContent = st.state || '-';
+            state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
+            host.textContent = st.local_host || '-';
+            port.textContent = st.local_port || '-';
+            renderRemoteCell(remote, st.remote || '-');
+          });
+        }
       } catch (err) {
         banner.textContent = t('status.offline');
         banner.className = 'badge bad';

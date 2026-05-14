@@ -48,6 +48,7 @@ type DashboardPage struct {
 
 type SettingsPage struct {
 	ContentTemplate string
+	Daemon          bool
 }
 
 type TunnelRow struct {
@@ -71,6 +72,7 @@ type FormPage struct {
 	IsEdit          bool
 	Defaults        config.Config
 	RemoteMode      string
+	Daemon          bool
 }
 
 type RawConfigPage struct {
@@ -78,6 +80,7 @@ type RawConfigPage struct {
 	Message         string
 	Error           string
 	Raw             string
+	Daemon          bool
 }
 
 type LogsPage struct {
@@ -88,6 +91,7 @@ type LogsPage struct {
 	Lines           []template.HTML
 	Message         string
 	Error           string
+	Daemon          bool
 }
 
 type StatusAPI struct {
@@ -160,7 +164,7 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "settings", SettingsPage{ContentTemplate: "settingsContent"})
+	s.render(w, "settings", SettingsPage{ContentTemplate: "settingsContent", Daemon: s.daemonOnline()})
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +200,7 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		Submit:          "Save globals",
 		Config:          cfg,
 		Defaults:        cfg,
+		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -245,7 +250,7 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConfigRawGet(w http.ResponseWriter, r *http.Request) {
 	raw, _ := os.ReadFile(s.configPath)
-	page := RawConfigPage{ContentTemplate: "configRawContent", Raw: string(raw)}
+	page := RawConfigPage{ContentTemplate: "configRawContent", Raw: string(raw), Daemon: s.daemonOnline()}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
 	}
@@ -284,6 +289,7 @@ func (s *Server) handleTunnelNewGet(w http.ResponseWriter, r *http.Request) {
 		Submit:          "Add tunnel",
 		Config:          cfg,
 		Defaults:        cfg,
+		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -336,6 +342,7 @@ func (s *Server) handleTunnelEditGet(w http.ResponseWriter, r *http.Request) {
 		Tunnel:          tunnel,
 		IsEdit:          true,
 		Defaults:        cfg,
+		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -412,7 +419,7 @@ func (s *Server) handleLogsGet(w http.ResponseWriter, r *http.Request) {
 	follow := queryBool(r, "follow")
 	path := s.logPath(name)
 	lines, err := readTail(path, tail)
-	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines)}
+	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines), Daemon: s.daemonOnline()}
 	if err != nil {
 		if os.IsNotExist(err) {
 			page.Message = "No log file yet."
@@ -534,16 +541,21 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 func (s *Server) renderError(w http.ResponseWriter, name, msg string) {
 	switch name {
 	case "config_raw":
-		s.render(w, "config_raw", RawConfigPage{ContentTemplate: "configRawContent", Error: msg})
+		s.render(w, "config_raw", RawConfigPage{ContentTemplate: "configRawContent", Error: msg, Daemon: s.daemonOnline()})
 	case "config":
 		cfg, _, _ := loadConfigFile(s.configPath)
-		s.render(w, "config", FormPage{ContentTemplate: "configContent", Error: msg, Config: cfg, Defaults: cfg, Title: "Global config"})
+		s.render(w, "config", FormPage{ContentTemplate: "configContent", Error: msg, Config: cfg, Defaults: cfg, Title: "Global config", Daemon: s.daemonOnline()})
 	case "tunnel_form":
 		cfg, _, _ := loadConfigFile(s.configPath)
-		s.render(w, "tunnel_form", FormPage{ContentTemplate: "tunnelFormContent", Error: msg, Config: cfg, Defaults: cfg})
+		s.render(w, "tunnel_form", FormPage{ContentTemplate: "tunnelFormContent", Error: msg, Config: cfg, Defaults: cfg, Daemon: s.daemonOnline()})
 	default:
 		s.render(w, "dashboard", DashboardPage{ContentTemplate: "dashboardContent", Error: msg})
 	}
+}
+
+func (s *Server) daemonOnline() bool {
+	resp, err := control.Do(s.socketPath, control.Request{Command: "status"})
+	return err == nil && resp.OK
 }
 
 func (s *Server) logPath(name string) string {
