@@ -799,6 +799,13 @@
         el.textContent = text;
       }
     });
+    scope.querySelectorAll('[data-i18n-label]').forEach(function(el) {
+      const key = el.getAttribute('data-i18n-label');
+      const text = translate(key);
+      if (text) {
+        el.setAttribute('data-label', text);
+      }
+    });
   }
 
   function bindSettingsPage() {

@@ -25,12 +25,12 @@
       <tbody>
         {{ range .Rows }}
         <tr data-name="{{ .Tunnel.Name }}">
-          <td class="mono">{{ .Tunnel.Name }}</td>
-          <td><span class="badge {{ statusClass .Status.State }}" data-field="state">{{ statusLabel .Status.State }}</span></td>
-          <td class="mono{{ if .InheritedLocalHost }} derived{{ end }}" data-field="host">{{ fieldValue .Status.LocalHost }}</td>
-          <td class="mono{{ if .InheritedLocalPort }} derived{{ end }}" data-field="port">{{ formatInt .Status.LocalPort }}</td>
-          <td class="mono" data-field="remote">{{ $remote := remoteDisplay .Status }}{{ $link := remoteLink $remote }}{{ if $link }}<a href="{{ $link }}" target="_blank" rel="noopener noreferrer">{{ $remote }}</a>{{ else }}{{ $remote }}{{ end }}</td>
-          <td class="actions">
+          <td class="mono" data-i18n-label="dashboard.name">{{ .Tunnel.Name }}</td>
+          <td data-i18n-label="dashboard.state"><span class="badge {{ statusClass .Status.State }}" data-field="state">{{ statusLabel .Status.State }}</span></td>
+          <td class="mono{{ if .InheritedLocalHost }} derived{{ end }}" data-field="host" data-i18n-label="dashboard.local_host">{{ fieldValue .Status.LocalHost }}</td>
+          <td class="mono{{ if .InheritedLocalPort }} derived{{ end }}" data-field="port" data-i18n-label="dashboard.local_port">{{ formatInt .Status.LocalPort }}</td>
+          <td class="mono" data-field="remote" data-i18n-label="dashboard.remote">{{ $remote := remoteDisplay .Status }}{{ $link := remoteLink $remote }}{{ if $link }}<a href="{{ $link }}" target="_blank" rel="noopener noreferrer">{{ $remote }}</a>{{ else }}{{ $remote }}{{ end }}</td>
+          <td class="actions" data-i18n-label="dashboard.actions">
             {{ if .Tunnel.Disabled }}
             <form method="post" action="/tunnels/{{ .Tunnel.Name }}/start">
               <button class="button tiny" type="submit" data-i18n="dashboard.start">Start</button>

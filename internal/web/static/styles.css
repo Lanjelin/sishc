@@ -792,8 +792,9 @@ table.table td.actions, table.table th.actions { white-space: nowrap; }
 table.table td.actions {
   display: flex;
   flex-wrap: wrap;
-  gap: .35rem;
-  align-items: flex-start;
+  gap: .25rem;
+  align-items: center;
+  align-content: flex-start;
 }
 table.table td.actions form { margin: 0; }
 table.table td.actions .button { margin: 0; }
@@ -941,18 +942,102 @@ textarea.code {
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 @media (max-width: 840px) {
-  .topbar { position: static; flex-direction: column; align-items: start; }
+  .topbar { position: static; }
+  .topbar-inner { flex-direction: column; align-items: stretch; gap: .65rem; }
   .brand a { font-size: 1.45rem; }
-  .topbar-inner { align-items: start; }
-  .topbar-right { margin-left: 0; justify-content: flex-start; }
-  .panel { border-radius: 14px; }
-  table.table { min-width: 900px; }
-  table.table td.actions { display: block; }
-  .kv-row { grid-template-columns: 1fr; gap: .35rem; }
-  .footer-actions { justify-content: stretch; }
+  .topbar-right { margin-left: 0; width: 100%; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: .5rem; }
+  .topbar-status { width: 100%; justify-content: space-between; }
+  .topbar-actions { width: 100%; }
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .35rem;
+  }
+  .topbar-actions .button { width: 100%; }
+  .page { padding: .7rem; gap: .75rem; }
+  .panel { border-radius: 14px; padding: .8rem; }
+  .panel-head { gap: .65rem; }
+  .panel-actions { width: 100%; }
+  .panel-actions .button { width: 100%; }
+  .table-wrap { margin-top: .25rem; overflow: visible; }
+  table.table { min-width: 0; margin-top: .6rem; }
+  table.table thead { display: none; }
+  table.table, table.table tbody, table.table tr, table.table td { display: block; width: 100%; }
+  table.table tr {
+    margin-top: .75rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--panel) 78%, transparent);
+  }
+  table.table th, table.table td { padding: .55rem .7rem; border-bottom: 1px solid var(--line); }
+  table.table td {
+    display: flex;
+    gap: .75rem;
+    justify-content: space-between;
+    align-items: flex-start;
+    white-space: normal;
+  }
+  table.table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: .8rem;
+    font-weight: 600;
+    flex: 0 0 6.75rem;
+    max-width: 6.75rem;
+  }
+  table.table td:last-child { border-bottom: 0; }
+  table.table td.actions {
+    display: block;
+  }
+  table.table td.actions::before {
+    display: block;
+    margin-bottom: .35rem;
+  }
+  table.table td.actions {
+    gap: .2rem;
+  }
+  table.table td.actions form,
+  table.table td.actions .button {
+    width: 4.75rem;
+    max-width: 4.75rem;
+  }
+  table.table td.actions form {
+    display: inline-block;
+    margin: 0 .15rem .15rem 0;
+  }
+  table.table td.actions form .button,
+  table.table td.actions .button {
+    width: 100%;
+  }
+  .kv-list { border-radius: 12px; }
+  .kv-row { grid-template-columns: 1fr; gap: .3rem; padding: .6rem .7rem; }
+  .footer-actions { justify-content: stretch; width: 100%; }
   .footer-actions .button { width: 100%; }
+  .log-output { margin-top: .8rem; max-height: 62vh; padding: .85rem; }
 }
 
 @media (max-width: 520px) {
-.brand a { font-size: 1.35rem; }
+  .brand a { font-size: 1.35rem; }
+  .topbar-status { font-size: .95rem; }
+  .panel-head h1 { font-size: 1.5rem; }
+  .panel-head h2 { font-size: 1.05rem; }
+  .button, .button.tiny { width: 100%; }
+  .panel-actions, .topbar-actions { gap: .4rem; }
+  .notice { padding: .65rem .8rem; }
+  table.table td::before { flex-basis: 5.8rem; max-width: 5.8rem; }
+  .log-output {
+    padding: .7rem;
+    font-size: .86rem;
+    line-height: 1.45;
+    max-height: 58vh;
+  }
+  .logs .panel-head,
+  .logs .panel-actions {
+    gap: .35rem;
+  }
+  .logs .panel-actions .button {
+    flex: 1 1 calc(50% - .35rem);
+    max-width: none;
+  }
 }
