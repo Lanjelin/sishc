@@ -175,20 +175,11 @@ func acquireConfigLock(configPath string) (*os.File, error) {
 }
 
 func preflightDependencies() error {
-	var missing []string
-	if _, err := execLookPath("autossh"); err != nil {
-		missing = append(missing, "autossh")
-	}
-	if _, err := execLookPath("ssh"); err != nil {
-		missing = append(missing, "ssh")
-	}
-	if len(missing) == 0 {
+	if _, err := execLookPath("ssh"); err == nil {
 		return nil
 	}
-	for _, name := range missing {
-		fmt.Fprintf(os.Stderr, "missing dependency: %s\n", name)
-	}
-	return fmt.Errorf("required tunnel dependencies are missing")
+	fmt.Fprintln(os.Stderr, "missing dependency: ssh")
+	return fmt.Errorf("required tunnel dependency is missing")
 }
 
 var execLookPath = func(file string) (string, error) {

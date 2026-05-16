@@ -4,8 +4,7 @@
 It reads a config file as source of truth, keeps tunnels reconciled in the background, and exposes a Unix socket for `status` and `reconcile`.
 
 Runtime dependencies:
-- `autossh`
-- `ssh`
+- `ssh` (uses `~/.ssh/known_hosts` by default; override with `SISHC_KNOWN_HOSTS`)
 
 ## What it does
 
@@ -64,6 +63,7 @@ Useful environment variables:
 - `SISHC_CONFIG_FILE`
 - `SISHC_LOG_DIR`
 - `SISHC_SOCKET`
+- `SISHC_KNOWN_HOSTS`
 
 Example:
 

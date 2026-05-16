@@ -3,6 +3,7 @@ package tunnels
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -68,7 +69,7 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 		_, _ = logWriter.Write([]byte("connect_to localhost port 8060: failed.\n"))
 		_, _ = logWriter.Write([]byte("ssh: rejected: connect failed (Connection refused)\n"))
 		_, _ = logWriter.Write([]byte("hello\n"))
-		return proc, []string{"autossh", resolved.RemoteForward()}, nil
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
 	s := NewSupervisor(cfgPath, logDir, launcher)
@@ -144,6 +145,95 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	}
 }
 
+func TestSupervisorReconnectsAfterLaunchError(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 2345}
+	launchCount := 0
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		launchCount++
+		if launchCount == 1 {
+			return nil, nil, errors.New("temporary ssh failure")
+		}
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	cfg := config.Config{
+		SSHKey:        "id_rsa",
+		LocalProtocol: "http",
+		LocalHost:     "localhost",
+		LocalPort:     8080,
+		RemotePort:    2222,
+		RemoteServer:  "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for launchCount < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("launchCount = %d, want 2", launchCount)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	st, ok := s.StatusFor("one")
+	if !ok {
+		t.Fatal("StatusFor() missing tunnel")
+	}
+	if st.State != StateRunning {
+		t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+	}
+
+	proc.waitCh <- nil
+	time.Sleep(20 * time.Millisecond)
+}
+
+func TestBuildSSHCommandUsesKnownHostsOverride(t *testing.T) {
+	dir := t.TempDir()
+	knownHosts := filepath.Join(dir, "known_hosts")
+	t.Setenv("SISHC_KNOWN_HOSTS", knownHosts)
+
+	cmd, err := buildSSHCommand(config.Tunnel{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+	}, "80:127.0.0.1:8080")
+	if err != nil {
+		t.Fatalf("buildSSHCommand() error = %v", err)
+	}
+	if len(cmd) == 0 || cmd[0] != "ssh" {
+		t.Fatalf("buildSSHCommand() = %v, want ssh command", cmd)
+	}
+	got := strings.Join(cmd, " ")
+	for _, want := range []string{
+		"-o BatchMode=yes",
+		"-o IdentitiesOnly=yes",
+		"-o ExitOnForwardFailure=yes",
+		"-o ServerAliveInterval=10",
+		"-o ServerAliveCountMax=3",
+		"-o StrictHostKeyChecking=accept-new",
+		"-o UserKnownHostsFile=" + knownHosts,
+		"-R 80:127.0.0.1:8080",
+		"example.com",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("buildSSHCommand() = %q, missing %q", got, want)
+		}
+	}
+}
+
 func TestSupervisorStopsDisabledTunnel(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
@@ -212,7 +302,7 @@ func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 4321}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
-		return proc, []string{"autossh", resolved.RemoteForward()}, nil
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
 	s := NewSupervisor(cfgPath, logDir, launcher)
@@ -264,9 +354,9 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launchCount++
 		if launchCount == 1 {
-			return proc1, []string{"autossh", resolved.RemoteForward()}, nil
+			return proc1, []string{"ssh", resolved.RemoteForward()}, nil
 		}
-		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
+		return proc2, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
 	s := NewSupervisor(cfgPath, logDir, launcher)
@@ -336,9 +426,9 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launchCount++
 		if launchCount == 1 {
-			return proc1, []string{"autossh", resolved.RemoteForward()}, nil
+			return proc1, []string{"ssh", resolved.RemoteForward()}, nil
 		}
-		return proc2, []string{"autossh", resolved.RemoteForward()}, nil
+		return proc2, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
 	s := NewSupervisor(cfgPath, logDir, launcher)
@@ -421,7 +511,7 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
-		return proc, []string{"autossh", resolved.RemoteForward()}, nil
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
 	var buf bytes.Buffer

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -13,6 +14,8 @@ const (
 	logRotateSize = 5 * 1024 * 1024
 	logRotateKeep = 3
 )
+
+var ansiRegexp = regexp.MustCompile(`\x1B[@-_][0-?]*[ -/]*[@-~]`)
 
 type rotatingFile struct {
 	mu      sync.Mutex
@@ -159,7 +162,7 @@ func (w *lineFilterWriter) Write(data []byte) (int, error) {
 }
 
 func parseAssignedURL(line string) (string, bool, bool) {
-	line = strings.TrimSpace(stripANSI(line))
+	line = normalizeTunnelControlLine(line)
 	switch {
 	case strings.HasPrefix(line, "HTTPS: "):
 		return strings.TrimSpace(strings.TrimPrefix(line, "HTTPS: ")), true, true
@@ -194,4 +197,30 @@ func sanitizeLogFileName(name string) string {
 		return "tunnel"
 	}
 	return b.String()
+}
+
+func normalizeTunnelControlLine(line string) string {
+	line = strings.TrimSpace(stripANSI(line))
+	if idx := strings.Index(line, ": "); idx > 0 {
+		rest := strings.TrimSpace(line[idx+2:])
+		switch {
+		case strings.HasPrefix(rest, "Warning: Permanently added "):
+			return rest
+		case strings.HasPrefix(rest, "Starting SSH Forwarding service for "):
+			return rest
+		case rest == "Press Ctrl-C to close the session.":
+			return rest
+		case strings.HasPrefix(rest, "The subdomain ") && strings.HasSuffix(rest, " is unavailable. Assigning a random subdomain."):
+			return rest
+		case strings.HasPrefix(rest, "HTTPS: "):
+			return rest
+		case strings.HasPrefix(rest, "HTTP: "):
+			return rest
+		}
+	}
+	return line
+}
+
+func stripANSI(s string) string {
+	return ansiRegexp.ReplaceAllString(s, "")
 }

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,9 +18,8 @@ import (
 
 type State string
 
-var ansiRegexp = regexp.MustCompile(`\x1B[@-_][0-?]*[ -/]*[@-~]`)
-
 const (
+	reconnectDelay     = 750 * time.Millisecond
 	StateDisabled     State = "disabled"
 	StateStarting     State = "starting"
 	StateRunning      State = "running"
@@ -64,6 +62,7 @@ type Supervisor struct {
 	remoteURLs  map[string]string
 	processes   map[string]trackedProcess
 	stopping    map[string]Status
+	reconnects  map[string]*time.Timer
 	lastMod     time.Time
 }
 
@@ -89,6 +88,7 @@ func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 		remoteURLs: make(map[string]string),
 		processes:  make(map[string]trackedProcess),
 		stopping:   make(map[string]Status),
+		reconnects: make(map[string]*time.Timer),
 	}
 }
 
@@ -211,6 +211,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		tunnel, ok := desired[name]
 		switch {
 		case !ok:
+			s.cancelReconnectLocked(name)
 			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
@@ -224,6 +225,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				Remote:       fields.Remote,
 			})
 		case tunnel.Disabled:
+			s.cancelReconnectLocked(name)
 			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
@@ -237,6 +239,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				Remote:       fields.Remote,
 			})
 		case current.spec != tunnelSpec(tunnel):
+			s.cancelReconnectLocked(name)
 			restartLater[name] = struct{}{}
 			s.lifecyclef("tunnel %s restarting", name)
 			fields := s.status[name]
@@ -257,6 +260,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	for name, tunnel := range desired {
 		spec := tunnelSpec(tunnel)
 		if tunnel.Disabled {
+			s.cancelReconnectLocked(name)
 			fields := s.status[name]
 			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
 			continue
@@ -264,6 +268,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 		current, ok := s.processes[name]
 		if ok && current.spec == spec {
+			s.cancelReconnectLocked(name)
 			fields := s.status[name]
 			s.setStatusLocked(name, StateRunning, "running", current.command, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
 			continue
@@ -291,6 +296,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			cancel()
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 			s.lifecyclef("tunnel %s error: %v", name, err)
+			s.scheduleReconnectLocked(name, s.status[name], nil, 0)
 			continue
 		}
 
@@ -302,6 +308,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			logFile: logWriter,
 			done:    make(chan struct{}),
 		}
+		s.cancelReconnectLocked(name)
 		s.setStatusLocked(name, StateRunning, "running", command, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 		s.lifecyclef("tunnel %s started", name)
 		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
@@ -309,6 +316,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 	for name := range s.status {
 		if _, ok := desired[name]; !ok {
+			s.cancelReconnectLocked(name)
 			delete(s.status, name)
 			s.remoteMu.Lock()
 			delete(s.remoteURLs, name)
@@ -318,7 +326,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 	if len(restartLater) > 0 {
 		go func() {
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(reconnectDelay)
 			_ = s.ReconcileNow(context.Background())
 		}()
 	}
@@ -345,6 +353,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if final, ok := s.stopping[name]; ok {
+		s.cancelReconnectLocked(name)
 		delete(s.stopping, name)
 		delete(s.processes, name)
 		s.setStatusLocked(name, final.State, final.Detail, final.Command, final.LastExitCode, final.LocalHost, final.LocalPort, final.Remote)
@@ -360,6 +369,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 		s.lifecyclef("tunnel %s stopped", name)
 	case StateError:
 		s.lifecyclef("tunnel %s error: %s", name, detail)
+		s.scheduleReconnectLocked(name, fields, command, exitCode)
 	}
 	_ = logFile.Close()
 	cancel()
@@ -386,6 +396,7 @@ func (s *Supervisor) stopAll() {
 
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
 	s.stopping[name] = final
+	s.cancelReconnectLocked(name)
 	_ = current.process.Stop()
 	current.cancel()
 	delete(s.processes, name)
@@ -400,6 +411,27 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 		s.setStatusLocked(name, StateError, "timed out stopping tunnel", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
 		s.lifecyclef("tunnel %s error: timed out stopping tunnel", name)
 		return false
+	}
+}
+
+func (s *Supervisor) scheduleReconnectLocked(name string, current Status, command []string, exitCode int) {
+	if timer := s.reconnects[name]; timer != nil {
+		return
+	}
+	s.setStatusLocked(name, StateReconnecting, "restarting after exit", command, exitCode, current.LocalHost, current.LocalPort, current.Remote)
+	s.lifecyclef("tunnel %s reconnecting", name)
+	s.reconnects[name] = time.AfterFunc(reconnectDelay, func() {
+		s.mu.Lock()
+		delete(s.reconnects, name)
+		s.mu.Unlock()
+		_ = s.ReconcileNow(context.Background())
+	})
+}
+
+func (s *Supervisor) cancelReconnectLocked(name string) {
+	if timer := s.reconnects[name]; timer != nil {
+		timer.Stop()
+		delete(s.reconnects, name)
 	}
 }
 
@@ -435,27 +467,14 @@ func (s *Supervisor) openTunnelLogWriter(name string) (*rotatingFile, error) {
 }
 
 func defaultLauncher(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
-	sshKey := expandSSHKey(resolved.SSHKey)
-	command := []string{
-		"autossh",
-		"-M", "0",
-		"-o", "ServerAliveInterval=10",
-		"-o", "ServerAliveCountMax=3",
-		"-o", "StrictHostKeyChecking=no",
-		"-T",
-		"-i", sshKey,
-		"-p", strconv.Itoa(resolved.RemotePort),
-		"-R", resolved.RemoteForward(),
-		resolved.RemoteServer,
+	command, err := buildSSHCommand(resolved, resolved.RemoteForward())
+	if err != nil {
+		return nil, nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
-	cmd.Env = append(os.Environ(),
-		"AUTOSSH_POLL=10",
-		"AUTOSSH_GATETIME=5",
-	)
 	if err := cmd.Start(); err != nil {
 		return nil, command, err
 	}
@@ -475,27 +494,14 @@ func RunOneOff(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) e
 }
 
 func oneOffLauncher(ctx context.Context, tunnel config.Tunnel, logWriter io.Writer) (Process, []string, error) {
-	sshKey := expandSSHKey(tunnel.SSHKey)
-	command := []string{
-		"autossh",
-		"-M", "0",
-		"-o", "ServerAliveInterval=10",
-		"-o", "ServerAliveCountMax=3",
-		"-o", "StrictHostKeyChecking=no",
-		"-T",
-		"-i", sshKey,
-		"-p", strconv.Itoa(tunnel.RemotePort),
-		"-R", tunnel.RemoteForward(),
-		tunnel.RemoteServer,
+	command, err := buildSSHCommand(tunnel, tunnel.RemoteForward())
+	if err != nil {
+		return nil, nil, err
 	}
 
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Stdout = logWriter
 	cmd.Stderr = logWriter
-	cmd.Env = append(os.Environ(),
-		"AUTOSSH_POLL=10",
-		"AUTOSSH_GATETIME=5",
-	)
 	if err := cmd.Start(); err != nil {
 		return nil, command, err
 	}
@@ -529,6 +535,43 @@ func (p *osProcess) PID() int {
 	return p.cmd.Process.Pid
 }
 
+func buildSSHCommand(tunnel config.Tunnel, remoteForward string) ([]string, error) {
+	sshKey := expandSSHKey(tunnel.SSHKey)
+	knownHosts, err := resolveKnownHostsPath()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(knownHosts), 0o755); err != nil {
+		return nil, err
+	}
+	return []string{
+		"ssh",
+		"-T",
+		"-i", sshKey,
+		"-p", strconv.Itoa(tunnel.RemotePort),
+		"-o", "BatchMode=yes",
+		"-o", "IdentitiesOnly=yes",
+		"-o", "ExitOnForwardFailure=yes",
+		"-o", "ServerAliveInterval=10",
+		"-o", "ServerAliveCountMax=3",
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "UserKnownHostsFile=" + knownHosts,
+		"-R", remoteForward,
+		tunnel.RemoteServer,
+	}, nil
+}
+
+func resolveKnownHostsPath() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("SISHC_KNOWN_HOSTS")); override != "" {
+		return override, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".ssh", "known_hosts"), nil
+}
+
 func expandSSHKey(value string) string {
 	if value == "" {
 		return value
@@ -550,7 +593,7 @@ func expandSSHKey(value string) string {
 }
 
 func shouldSkipLogLine(line string) bool {
-	line = strings.TrimSpace(stripANSI(line))
+	line = normalizeTunnelControlLine(line)
 	switch {
 	case line == "":
 		return true
@@ -569,10 +612,6 @@ func shouldSkipLogLine(line string) bool {
 	default:
 		return false
 	}
-}
-
-func stripANSI(s string) string {
-	return ansiRegexp.ReplaceAllString(s, "")
 }
 
 func (s *Supervisor) StatusFor(name string) (Status, bool) {

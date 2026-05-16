@@ -513,7 +513,7 @@ func TestAcquireConfigLockPreventsSecondDaemon(t *testing.T) {
 	}
 }
 
-func TestPreflightDependenciesReportsEachMissingBinary(t *testing.T) {
+func TestPreflightDependenciesReportsMissingSSHBinary(t *testing.T) {
 	orig := execLookPath
 	defer func() { execLookPath = orig }()
 	execLookPath = func(file string) (string, error) {
@@ -543,9 +543,6 @@ func TestPreflightDependenciesReportsEachMissingBinary(t *testing.T) {
 	got := <-done
 	if err == nil {
 		t.Fatal("preflightDependencies() error = nil, want missing dependency error")
-	}
-	if !strings.Contains(got, "missing dependency: autossh") {
-		t.Fatalf("stderr = %q, want autossh message", got)
 	}
 	if !strings.Contains(got, "missing dependency: ssh") {
 		t.Fatalf("stderr = %q, want ssh message", got)

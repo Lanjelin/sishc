@@ -23,7 +23,6 @@ ENV HOME="/config"
 
 RUN apk --no-cache add \
   tini \
-  autossh \
   openssh-client \
   ca-certificates
 

@@ -1,6 +1,7 @@
 package tunnels
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,5 +39,33 @@ func TestRotatingFileRotatesBySize(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "rotated") {
 		t.Fatalf("current log missing latest write: %q", string(data))
+	}
+}
+
+func TestTunnelOutputWriterCapturesPrefixedAssignedURL(t *testing.T) {
+	var buf bytes.Buffer
+	gotURL := ""
+	w := newTunnelOutputWriter(&buf, func(url string, secure bool) {
+		gotURL = url
+	})
+
+	input := "test1: HTTP: http://example.com\n" +
+		"test1: HTTPS: https://example.com\n" +
+		"test1: Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n" +
+		"test1: hello\n"
+
+	if _, err := w.Write([]byte(input)); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	got := buf.String()
+	if strings.Contains(got, "HTTP:") || strings.Contains(got, "HTTPS:") {
+		t.Fatalf("buffer contains startup chatter: %q", got)
+	}
+	if !strings.Contains(got, "test1: hello") {
+		t.Fatalf("buffer missing passthrough line: %q", got)
+	}
+	if gotURL != "https://example.com" {
+		t.Fatalf("gotURL = %q, want https://example.com", gotURL)
 	}
 }
