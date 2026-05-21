@@ -15,6 +15,9 @@ Runtime dependencies:
 - writes per-tunnel logs with rotation
 - supports temporary `oneoff` tunnels without touching config
 
+For the server side that `sishc` connects to, see:
+- https://github.com/Lanjelin/sish-starter
+
 ## Commands
 
 ```text
@@ -109,3 +112,19 @@ web_listen: 127.0.0.1:5000
 ```
 
 If `web_enabled` is false or omitted, the daemon runs tunnels only.
+
+## Docker
+
+The image runs as a non-root user by default.
+
+For a host-mounted `/config`, build with matching ownership:
+
+```text
+docker build \
+  --build-arg SISHC_UID=$(id -u) \
+  --build-arg SISHC_GID=$(id -g) \
+  -t sishc .
+```
+
+If you want a different default user inside the image, override `SISHC_USER`,
+`SISHC_UID`, and `SISHC_GID` at build time.
