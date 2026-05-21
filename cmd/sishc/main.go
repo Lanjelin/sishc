@@ -53,16 +53,24 @@ func main() {
 		err = runReconcile(args)
 	case "logs":
 		err = runLogs(ctx, args)
+	case "a":
+		fallthrough
 	case "add":
 		err = runAdd(args)
+	case "u":
+		fallthrough
 	case "update":
 		err = runUpdate(args)
+	case "rm":
+		fallthrough
 	case "remove":
 		err = runRemove(args)
 	case "start":
 		err = runStart(args)
 	case "stop":
 		err = runStop(args)
+	case "o":
+		fallthrough
 	case "oneoff":
 		err = runOneoff(ctx, args)
 	case "init":
@@ -1269,12 +1277,12 @@ Commands:
   logs       Show tunnel logs
   validate   Validate config and exit
   reconcile  Reconcile config now
-  add        Add a tunnel
-  update     Update a tunnel
-  remove     Remove a tunnel
+  add, a     Add a tunnel
+  update, u  Update a tunnel
+  remove, rm Remove a tunnel
   start      Enable a tunnel
   stop       Disable a tunnel
-  oneoff     Run a temporary tunnel
+  oneoff, o  Run a temporary tunnel
   init       Create config interactively
 
 Flags:
