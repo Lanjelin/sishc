@@ -661,6 +661,7 @@ func runOneoff(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	localAddr = normalizeOneoffLocalAddr(localAddr)
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -1005,6 +1006,27 @@ func isPortOnlyLocalAddr(localAddr string) bool {
 	}
 	_, err := strconv.Atoi(localAddr)
 	return err == nil
+}
+
+func normalizeOneoffLocalAddr(localAddr string) string {
+	localAddr = strings.TrimSpace(localAddr)
+	if localAddr == "" {
+		return localAddr
+	}
+	if isPortOnlyLocalAddr(localAddr) {
+		return "127.0.0.1:" + localAddr
+	}
+	if !strings.Contains(localAddr, ":") {
+		return localAddr
+	}
+	host, portStr, err := net.SplitHostPort(localAddr)
+	if err != nil {
+		return localAddr
+	}
+	if strings.TrimSpace(host) == "" {
+		return "127.0.0.1:" + portStr
+	}
+	return localAddr
 }
 
 func parseLocalEndpoint(localAddr string) (string, int, error) {

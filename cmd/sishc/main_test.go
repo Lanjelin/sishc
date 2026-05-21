@@ -441,6 +441,18 @@ func TestParseOneoffArgsSupportsRandomSubdomainAndPortOnly(t *testing.T) {
 	}
 }
 
+func TestNormalizeOneoffLocalAddr(t *testing.T) {
+	if got := normalizeOneoffLocalAddr("6080"); got != "127.0.0.1:6080" {
+		t.Fatalf("normalizeOneoffLocalAddr(6080) = %q, want 127.0.0.1:6080", got)
+	}
+	if got := normalizeOneoffLocalAddr(":6080"); got != "127.0.0.1:6080" {
+		t.Fatalf("normalizeOneoffLocalAddr(:6080) = %q, want 127.0.0.1:6080", got)
+	}
+	if got := normalizeOneoffLocalAddr("localhost:6080"); got != "localhost:6080" {
+		t.Fatalf("normalizeOneoffLocalAddr(localhost:6080) = %q, want localhost:6080", got)
+	}
+}
+
 func TestParseStatusArgsSupportsVerboseAndName(t *testing.T) {
 	name, verbose, _, err := parseStatusArgs([]string{"--verbose", "test1"})
 	if err != nil {
