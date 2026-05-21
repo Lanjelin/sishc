@@ -20,11 +20,11 @@ ARG SISHC_USER=sishc
 ARG SISHC_UID=1000
 ARG SISHC_GID=1000
 
-ENV SISHC_LOG_DIR="/config/logs"
-ENV SISHC_CONFIG_FILE="/config/config.yaml"
-ENV SISHC_SOCKET="/config/sishc.sock"
-ENV SISHC_KNOWN_HOSTS="/config/.ssh/known_hosts"
 ENV HOME="/config"
+ENV SISHC_LOG_DIR="${HOME}/logs"
+ENV SISHC_CONFIG_FILE="${HOME}/config.yaml"
+ENV SISHC_SOCKET="${HOME}/sishc.sock"
+ENV SISHC_KNOWN_HOSTS="${HOME}/.ssh/known_hosts"
 
 RUN apk --no-cache add \
   tini \
@@ -32,15 +32,15 @@ RUN apk --no-cache add \
   ca-certificates
 
 RUN addgroup -S -g "${SISHC_GID}" "${SISHC_USER}" \
-  && adduser -S -D -u "${SISHC_UID}" -G "${SISHC_USER}" -h /config "${SISHC_USER}" \
-  && mkdir -p /config \
-  && mkdir -p /config/.ssh \
-  && chown -R "${SISHC_USER}:${SISHC_USER}" /config
+  && adduser -S -D -u "${SISHC_UID}" -G "${SISHC_USER}" -h "${HOME}" "${SISHC_USER}" \
+  && mkdir -p "${HOME}" \
+  && mkdir -p "${HOME}/.ssh" \
+  && chown -R "${SISHC_USER}:${SISHC_USER}" "${HOME}"
 
 COPY --from=build /out/sishc /usr/local/bin/sishc
 
-WORKDIR /config
-VOLUME /config
+WORKDIR "${HOME}"
+VOLUME "${HOME}"
 
 USER ${SISHC_USER}
 
