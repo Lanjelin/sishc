@@ -2,15 +2,10 @@ services:
   sishc:
     image: ghcr.io/lanjelin/sishc:latest
     container_name: sishc
+    user: "1000:1000"
     volumes:
       - ./config:/config
-      - ~/.ssh:/config/.ssh:ro
-    environment:
-      - TZ=Europe/Oslo
-      - PUID=1000 # defaults to 1000
-      - PGID=1000 # defaults to 1000
-    #  - USE_COLOR=false # toggle color in logs
-    #  - SISHC_LOG_DIR="/config/logs" # change log dir
+      # - ~/.ssh/id_rsa:/config/.ssh/id_rsa:ro
     ports:
       - 5000:5000
-    restart: on-failure:10
+    restart: unless-stopped
