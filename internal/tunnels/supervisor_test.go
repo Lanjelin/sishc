@@ -18,11 +18,17 @@ import (
 type fakeProcess struct {
 	waitCh chan error
 	stops  int
+	kills  int
 	pid    int
 }
 
 func (p *fakeProcess) Stop() error {
 	p.stops++
+	return nil
+}
+
+func (p *fakeProcess) Kill() error {
+	p.kills++
 	return nil
 }
 
@@ -142,6 +148,54 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	}
 	if !strings.Contains(logText, "ssh: rejected: connect failed (Connection refused)") {
 		t.Fatalf("log missing ssh error: %q", logText)
+	}
+}
+
+func TestSupervisorRemovesTunnelFromStatusAfterConfigRemoval(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	cfg := config.Config{
+		SSHKey:        "id_rsa",
+		LocalProtocol: "http",
+		LocalHost:     "localhost",
+		LocalPort:     8080,
+		RemotePort:    2222,
+		RemoteServer:  "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 3456}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+	if _, ok := s.StatusFor("one"); !ok {
+		t.Fatal("StatusFor() missing tunnel after start")
+	}
+
+	cfg.Tunnels = nil
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() removal error = %v", err)
+	}
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() removal error = %v", err)
+	}
+	proc.waitCh <- nil
+	time.Sleep(20 * time.Millisecond)
+
+	if _, ok := s.StatusFor("one"); ok {
+		t.Fatal("StatusFor() still has removed tunnel")
 	}
 }
 
@@ -485,12 +539,11 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 
 	deadline = time.Now().Add(time.Second)
 	for {
-		stOld, ok := s.StatusFor("test231")
-		if ok && stOld.State == StateStopped {
+		if _, ok := s.StatusFor("test231"); !ok {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("old tunnel state did not reach stopped: %+v", stOld)
+			t.Fatal("old tunnel still present in status after rename")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -593,5 +646,87 @@ func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 
 	if _, ok := s.StatusFor("one"); ok {
 		t.Fatal("StatusFor() should not include deleted tunnel")
+	}
+}
+
+func TestSupervisorMarksStaleAndKillsOnStopTimeout(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	cfg := config.Config{
+		Tunnels: []config.Tunnel{
+			{Name: "one", SSHKey: "id_rsa", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 4567}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	oldTimeout := stopTimeout
+	stopTimeout = 50 * time.Millisecond
+	t.Cleanup(func() {
+		stopTimeout = oldTimeout
+	})
+
+	s.mu.Lock()
+	current := s.processes["one"]
+	fields := s.status["one"]
+	s.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		_ = s.requestStopLocked("one", current, Status{
+			Name:         "one",
+			State:        StateStopped,
+			Detail:       "stopped",
+			Command:      append([]string(nil), current.command...),
+			UpdatedAt:    time.Now().UTC(),
+			LastExitCode: 0,
+			LocalHost:    fields.LocalHost,
+			LocalPort:    fields.LocalPort,
+			Remote:       fields.Remote,
+		})
+		close(done)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		st, ok := s.StatusFor("one")
+		if ok && st.State == StateStale {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status did not reach stale: %+v", st)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if proc.kills == 0 {
+		t.Fatal("process was not hard-killed after stop timeout")
+	}
+
+	proc.waitCh <- nil
+	<-done
+
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		st, ok := s.StatusFor("one")
+		if ok && st.State == StateStopped {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status did not settle to stopped: %+v", st)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

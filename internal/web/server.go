@@ -951,7 +951,9 @@ func statusClass(st tunnels.State) string {
 		return "ok"
 	case tunnels.StateDisabled:
 		return "muted"
-	case tunnels.StateError:
+	case tunnels.StateStopping, tunnels.StateReconnecting:
+		return "warn"
+	case tunnels.StateStale, tunnels.StateError:
 		return "bad"
 	default:
 		return "warn"
@@ -966,6 +968,10 @@ func statusLabel(st tunnels.State) string {
 		return "disabled"
 	case tunnels.StateError:
 		return "error"
+	case tunnels.StateStopping:
+		return "stopping"
+	case tunnels.StateStale:
+		return "stale"
 	case tunnels.StateStarting:
 		return "starting"
 	case tunnels.StateReconnecting:
@@ -1073,14 +1079,18 @@ func statusRank(state tunnels.State) int {
 		return 1
 	case tunnels.StateReconnecting:
 		return 2
-	case tunnels.StateDisabled:
+	case tunnels.StateStopping:
 		return 3
-	case tunnels.StateStopped:
+	case tunnels.StateStale:
 		return 4
-	case tunnels.StateError:
+	case tunnels.StateDisabled:
 		return 5
-	default:
+	case tunnels.StateStopped:
 		return 6
+	case tunnels.StateError:
+		return 7
+	default:
+		return 8
 	}
 }
 

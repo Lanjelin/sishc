@@ -867,7 +867,7 @@
             const port = row.querySelector('[data-field="port"]');
             const remote = row.querySelector('[data-field="remote"]');
             state.textContent = st.state || '-';
-            state.className = 'badge ' + ((st.state === 'running') ? 'ok' : (st.state === 'disabled' ? 'muted' : (st.state === 'error' ? 'bad' : 'warn')));
+            state.className = 'badge ' + ((st.state === 'running') ? 'ok' : ((st.state === 'disabled') ? 'muted' : ((st.state === 'error' || st.state === 'stale') ? 'bad' : 'warn')));
             host.textContent = st.local_host || '-';
             port.textContent = st.local_port || '-';
             renderRemoteCell(remote, st.remote || '-');
