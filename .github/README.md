@@ -1,21 +1,63 @@
 # SISHC
 
-`sishc` is a daemon-first CLI for managing [sish](https://docs.ssi.sh/) tunnels.
-It reads a config file as source of truth, keeps tunnels reconciled in the background, and exposes a Unix socket for `status` and `reconcile`.
+`sishc` is a small daemon-first CLI for managing [sish](https://docs.ssi.sh/) tunnels. It keeps a config file as source of truth, runs tunnels in the background, and exposes a Unix socket for `status`, `logs`, and `reconcile`.
 
-Runtime dependencies:
-- `ssh` (uses `~/.ssh/known_hosts` by default; override with `SISHC_KNOWN_HOSTS`)
+The binary is called `sishc`. The release image is `ghcr.io/lanjelin/sishc:latest`.
+
+## Quick start
+
+Docker is the easiest way to run it.
+
+1. Create a config in a mounted folder. Start from the example below and make sure `ssh_key`, `remote_server`, and `remote_port` are set.
+2. Make the SSH key available inside the container. The simplest way is to mount it somewhere under `/config` and point `ssh_key` at that path.
+3. If you want the web UI, set `web_enabled: true` and `web_listen: 0.0.0.0:5000` in the config.
+4. Start the container and expose port `5000`.
+5. Open the web UI in your browser.
+
+```bash
+docker run \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
+  -v "$(pwd)/config:/config" \
+  -p 5000:5000 \
+  ghcr.io/lanjelin/sishc:latest
+```
+
+The container reads its config from `/config/config.yaml`. It also uses `/config` for logs, the socket, and `known_hosts`.
+
+The container runs with `PUID` / `PGID`, defaulting to `1000:1000`. Change those if your mounted `/config` belongs to a different user.
+
+If you are running locally outside Docker, the default web bind is `127.0.0.1:5000`.
+
+If you want the local `sishc` binary to talk to the daemon inside Docker, point it at the mounted directory:
+
+```bash
+export SISHC_CONFIG_FILE=/path/to/config/config.yaml
+export SISHC_LOG_DIR=/path/to/config/logs
+export SISHC_SOCKET=/path/to/config/sishc.sock
+sishc status
+```
+
+## Screenshots
+
+These are placeholders for now.
+
+| Dashboard | Config |
+| --- | --- |
+| ![Dashboard](./screenshots/sishc.png) | ![Config](./screenshots/sishc.png) |
+| ![Logs](./screenshots/sishc.png) | ![Settings](./screenshots/sishc.png) |
 
 ## What it does
 
-- runs tunnels as a long-lived daemon
-- keeps one daemon per config file
 - manages tunnel config through the CLI
-- writes daemon events to `daemon.log`
 - writes per-tunnel logs with rotation
 - supports temporary `oneoff` tunnels without touching config
+- can start the web UI from config with `web_enabled: true`
+
+It keeps config as the source of truth and runs one tunnel manager per config file.
 
 For the server side that `sishc` connects to, see:
+
 - https://github.com/Lanjelin/sish-starter
 
 ## Commands
@@ -35,7 +77,7 @@ sishc oneoff [flags] [<name>] [<local_host>:]<local_port>
 sishc init [--config PATH]
 ```
 
-### Tunnel flags
+Tunnel flags:
 
 ```text
 --ssh-key PATH
@@ -44,7 +86,7 @@ sishc init [--config PATH]
 --local-protocol tcp|https
 ```
 
-### Notes
+Notes:
 
 - `add` and `update` accept shorthand host/port forms and use globals when fields are omitted
 - `update` uses `--new-name` for rename
@@ -53,12 +95,15 @@ sishc init [--config PATH]
 - `status` can show one tunnel in detail
 - `logs --follow` follows rotated log files
 
-## Config
+## Defaults and paths
 
-Default config path:
+All defaults are XDG compliant.
 
 ```text
-~/.config/sishc/config.yaml
+Config: ~/.config/sishc/config.yaml
+Logs:   ~/.local/share/sishc/logs
+Socket: $XDG_RUNTIME_DIR/sishc.sock
+        or ~/.local/share/sishc/sishc.sock
 ```
 
 Useful environment variables:
@@ -68,7 +113,9 @@ Useful environment variables:
 - `SISHC_SOCKET`
 - `SISHC_KNOWN_HOSTS`
 
-Example:
+## Config
+
+Example sparse config:
 
 ```yaml
 ssh_key: "~/.ssh/id_rsa"
@@ -96,36 +143,27 @@ tunnels:
     local_protocol: tcp
 ```
 
-## Logs
-
-- `daemon.log` contains daemon lifecycle messages
-- tunnel logs live next to it, one file per tunnel
-- logs rotate by size
-
-## Web UI
-
-The daemon can start the web UI automatically when these config keys are set:
+Web UI settings live in the same config:
 
 ```yaml
 web_enabled: true
 web_listen: 127.0.0.1:5000
 ```
 
-If `web_enabled` is false or omitted, the daemon runs tunnels only.
+## Install
 
-## Docker
+### Download a release
 
-The image starts as root, creates a runtime user from `PUID` / `PGID`, and then drops privileges with `su-exec`.
+Grab the `sishc` binary from GitHub Releases and drop it on your PATH.
 
-For a host-mounted `/config`, set matching ownership at runtime:
+### Build locally
 
-```text
-docker run \
-  -e PUID=$(id -u) \
-  -e PGID=$(id -g) \
-  -v "$(pwd)/config:/config" \
-  -p 5000:5000 \
-  sishc
+```bash
+go build ./cmd/sishc
 ```
 
-The compose example uses the same `PUID` / `PGID` values by default.
+### Run from source
+
+```bash
+go run ./cmd/sishc
+```
