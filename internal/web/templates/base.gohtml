@@ -28,9 +28,6 @@
         <a href="/">SISHC Tunnel Manager</a>
       </div>
       <div class="topbar-right">
-        <div class="statusbar topbar-status">
-          <span class="badge {{ if .Daemon }}ok{{ else }}bad{{ end }}" id="daemon-state">{{ if .Daemon }}online{{ else }}offline{{ end }}</span>
-        </div>
         <div class="topbar-actions">
           <a class="button tiny" href="/tunnels/new" data-i18n="dashboard.add_tunnel">Add tunnel</a>
           <a class="button secondary tiny" href="/config" data-i18n="dashboard.edit_config">Edit config</a>

@@ -74,11 +74,6 @@
       'theme.alucard': 'Alucard',
       'theme.light': 'Light',
       'theme.soft-dawn': 'Soft Dawn',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Updated',
-      'status.service_offline': 'service offline',
-      'status.service_unavailable': 'service unavailable',
       'logs.no_log_file_yet': 'No log file yet.',
       'logs.log_file_empty': 'Log file empty.',
     },
@@ -133,11 +128,6 @@
       'settings.title': 'Innstillinger',
       'settings.theme': 'Tema',
       'settings.language': 'Språk',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Oppdatert',
-      'status.service_offline': 'tjenesten er offline',
-      'status.service_unavailable': 'tjenesten er utilgjengelig',
       'logs.no_log_file_yet': 'Ingen loggfil ennå.',
       'logs.log_file_empty': 'Loggfilen er tom.',
     },
@@ -192,11 +182,6 @@
       'settings.title': 'Ajustes',
       'settings.theme': 'Tema',
       'settings.language': 'Idioma',
-      'status.online': 'en línea',
-      'status.offline': 'sin conexión',
-      'status.updated': 'Actualizado',
-      'status.service_offline': 'servicio sin conexión',
-      'status.service_unavailable': 'servicio no disponible',
       'logs.no_log_file_yet': 'Aún no hay archivo de registro.',
       'logs.log_file_empty': 'El archivo de registro está vacío.',
     },
@@ -247,11 +232,6 @@
       'settings.title': 'Inställningar',
       'settings.theme': 'Tema',
       'settings.language': 'Språk',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Uppdaterad',
-      'status.service_offline': 'tjänsten är offline',
-      'status.service_unavailable': 'tjänsten är otillgänglig',
       'logs.no_log_file_yet': 'Ingen loggfil ännu.',
       'logs.log_file_empty': 'Loggfilen är tom.',
     },
@@ -306,11 +286,6 @@
       'settings.title': 'Indstillinger',
       'settings.theme': 'Tema',
       'settings.language': 'Sprog',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Opdateret',
-      'status.service_offline': 'tjenesten er offline',
-      'status.service_unavailable': 'tjenesten er utilgængelig',
       'logs.no_log_file_yet': 'Ingen logfil endnu.',
       'logs.log_file_empty': 'Logfilen er tom.',
     },
@@ -365,11 +340,6 @@
       'settings.title': 'Asetukset',
       'settings.theme': 'Teema',
       'settings.language': 'Kieli',
-      'status.online': 'verkossa',
-      'status.offline': 'offline',
-      'status.updated': 'Päivitetty',
-      'status.service_offline': 'palvelu offline',
-      'status.service_unavailable': 'palvelu ei käytettävissä',
       'logs.no_log_file_yet': 'Lokitiedostoa ei vielä ole.',
       'logs.log_file_empty': 'Lokitiedosto on tyhjä.',
     },
@@ -424,11 +394,6 @@
       'settings.title': 'Einstellungen',
       'settings.theme': 'Design',
       'settings.language': 'Sprache',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Aktualisiert',
-      'status.service_offline': 'Dienst offline',
-      'status.service_unavailable': 'Dienst nicht verfügbar',
       'logs.no_log_file_yet': 'Noch keine Protokolldatei.',
       'logs.log_file_empty': 'Protokolldatei ist leer.',
     },
@@ -483,11 +448,6 @@
       'settings.title': 'Instellingen',
       'settings.theme': 'Thema',
       'settings.language': 'Taal',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Bijgewerkt',
-      'status.service_offline': 'dienst offline',
-      'status.service_unavailable': 'dienst niet beschikbaar',
       'logs.no_log_file_yet': 'Nog geen logbestand.',
       'logs.log_file_empty': 'Logbestand is leeg.',
     },
@@ -542,11 +502,6 @@
       'settings.title': 'Paramètres',
       'settings.theme': 'Thème',
       'settings.language': 'Langue',
-      'status.online': 'en ligne',
-      'status.offline': 'hors ligne',
-      'status.updated': 'Mis à jour',
-      'status.service_offline': 'service hors ligne',
-      'status.service_unavailable': 'service indisponible',
       'logs.no_log_file_yet': 'Pas encore de fichier journal.',
       'logs.log_file_empty': 'Le fichier journal est vide.',
     },
@@ -601,11 +556,6 @@
       'settings.title': 'Configurações',
       'settings.theme': 'Tema',
       'settings.language': 'Idioma',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Atualizado',
-      'status.service_offline': 'serviço offline',
-      'status.service_unavailable': 'serviço indisponível',
       'logs.no_log_file_yet': 'Ainda não há ficheiro de logs.',
       'logs.log_file_empty': 'O ficheiro de logs está vazio.',
     },
@@ -660,11 +610,6 @@
       'settings.title': 'Impostazioni',
       'settings.theme': 'Tema',
       'settings.language': 'Lingua',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Aggiornato',
-      'status.service_offline': 'servizio offline',
-      'status.service_unavailable': 'servizio non disponibile',
       'logs.no_log_file_yet': 'Nessun file di log ancora.',
       'logs.log_file_empty': 'Il file di log è vuoto.',
     },
@@ -733,11 +678,6 @@
       'theme.alucard': 'Alucard',
       'theme.light': 'Jasny',
       'theme.soft-dawn': 'Soft Dawn',
-      'status.online': 'online',
-      'status.offline': 'offline',
-      'status.updated': 'Zaktualizowano',
-      'status.service_offline': 'usługa offline',
-      'status.service_unavailable': 'usługa niedostępna',
       'logs.no_log_file_yet': 'Brak pliku logów.',
       'logs.log_file_empty': 'Plik logów jest pusty.',
     },
@@ -829,38 +769,15 @@
   }
 
   function bindDashboard() {
-    const banner = document.getElementById('daemon-state');
     const table = document.getElementById('tunnels-table');
-    if (!banner) {
+    if (!table) {
       return;
     }
 
-    function updateBannerStamp(now) {
-      banner.title = now.toLocaleString([], {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-    }
-
     async function refreshStatus() {
-      const t = translate;
       try {
         const res = await fetch('/api/status', { cache: 'no-store' });
         const data = await res.json();
-        if (!data.ok) {
-          banner.textContent = t('status.offline');
-          banner.className = 'badge bad';
-          banner.title = data.error || t('status.service_offline');
-          return;
-        }
-        banner.textContent = t('status.online');
-        banner.className = 'badge ok';
-        updateBannerStamp(new Date());
         if (table) {
           const rows = new Map((data.statuses || []).map(st => [st.name, st]));
           document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
@@ -879,9 +796,7 @@
           });
         }
       } catch (err) {
-        banner.textContent = t('status.offline');
-        banner.className = 'badge bad';
-        banner.title = t('status.service_unavailable');
+        return;
       }
     }
 

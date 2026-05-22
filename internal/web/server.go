@@ -43,12 +43,10 @@ type DashboardPage struct {
 	Error           string
 	Config          config.Config
 	Rows            []TunnelRow
-	Daemon          bool
 }
 
 type SettingsPage struct {
 	ContentTemplate string
-	Daemon          bool
 }
 
 type TunnelRow struct {
@@ -72,7 +70,6 @@ type FormPage struct {
 	IsEdit          bool
 	Defaults        config.Config
 	RemoteMode      string
-	Daemon          bool
 }
 
 type RawConfigPage struct {
@@ -80,7 +77,6 @@ type RawConfigPage struct {
 	Message         string
 	Error           string
 	Raw             string
-	Daemon          bool
 }
 
 type LogsPage struct {
@@ -91,7 +87,6 @@ type LogsPage struct {
 	Lines           []template.HTML
 	Message         string
 	Error           string
-	Daemon          bool
 }
 
 type StatusAPI struct {
@@ -164,17 +159,16 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "settings", SettingsPage{ContentTemplate: "settingsContent", Daemon: s.daemonOnline()})
+	s.render(w, "settings", SettingsPage{ContentTemplate: "settingsContent"})
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	cfg, exists, rawErr := loadConfigFile(s.configPath)
-	rows, daemonOnline, daemonErr := s.dashboardRows(cfg)
+	rows, daemonErr := s.dashboardRows(cfg)
 	page := DashboardPage{
 		ContentTemplate: "dashboardContent",
 		Config:          cfg,
 		Rows:            rows,
-		Daemon:          daemonOnline,
 	}
 	if rawErr != nil && !os.IsNotExist(rawErr) {
 		page.Error = rawErr.Error()
@@ -200,7 +194,6 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		Submit:          "Save globals",
 		Config:          cfg,
 		Defaults:        cfg,
-		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -250,7 +243,7 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConfigRawGet(w http.ResponseWriter, r *http.Request) {
 	raw, _ := os.ReadFile(s.configPath)
-	page := RawConfigPage{ContentTemplate: "configRawContent", Raw: string(raw), Daemon: s.daemonOnline()}
+	page := RawConfigPage{ContentTemplate: "configRawContent", Raw: string(raw)}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
 	}
@@ -289,7 +282,6 @@ func (s *Server) handleTunnelNewGet(w http.ResponseWriter, r *http.Request) {
 		Submit:          "Add tunnel",
 		Config:          cfg,
 		Defaults:        cfg,
-		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -342,7 +334,6 @@ func (s *Server) handleTunnelEditGet(w http.ResponseWriter, r *http.Request) {
 		Tunnel:          tunnel,
 		IsEdit:          true,
 		Defaults:        cfg,
-		Daemon:          s.daemonOnline(),
 	}
 	if msg := r.URL.Query().Get("msg"); msg != "" {
 		page.Message = msg
@@ -419,7 +410,7 @@ func (s *Server) handleLogsGet(w http.ResponseWriter, r *http.Request) {
 	follow := queryBool(r, "follow")
 	path := s.logPath(name)
 	lines, err := readTail(path, tail)
-	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines), Daemon: s.daemonOnline()}
+	page := LogsPage{ContentTemplate: "logsContent", Name: name, Tail: tail, Follow: follow, Lines: renderLogLines(lines)}
 	if err != nil {
 		if os.IsNotExist(err) {
 			page.Message = "No log file yet."
@@ -484,10 +475,9 @@ func (s *Server) setTunnelEnabled(w http.ResponseWriter, r *http.Request, enable
 	http.Redirect(w, r, "/?msg="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
-func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, bool, string) {
+func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, string) {
 	resp, err := control.Do(s.socketPath, control.Request{Command: "status"})
 	statuses := map[string]tunnels.Status{}
-	daemonOnline := err == nil && resp.OK
 	daemonErr := ""
 	if err != nil {
 		daemonErr = "Daemon offline"
@@ -524,7 +514,7 @@ func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, bool, string) {
 		}
 		rows = append(rows, row)
 	}
-	return rows, daemonOnline, daemonErr
+	return rows, daemonErr
 }
 
 func (s *Server) reconcileIfPossible() {
@@ -541,21 +531,16 @@ func (s *Server) render(w http.ResponseWriter, name string, data any) {
 func (s *Server) renderError(w http.ResponseWriter, name, msg string) {
 	switch name {
 	case "config_raw":
-		s.render(w, "config_raw", RawConfigPage{ContentTemplate: "configRawContent", Error: msg, Daemon: s.daemonOnline()})
+		s.render(w, "config_raw", RawConfigPage{ContentTemplate: "configRawContent", Error: msg})
 	case "config":
 		cfg, _, _ := loadConfigFile(s.configPath)
-		s.render(w, "config", FormPage{ContentTemplate: "configContent", Error: msg, Config: cfg, Defaults: cfg, Title: "Global config", Daemon: s.daemonOnline()})
+		s.render(w, "config", FormPage{ContentTemplate: "configContent", Error: msg, Config: cfg, Defaults: cfg, Title: "Global config"})
 	case "tunnel_form":
 		cfg, _, _ := loadConfigFile(s.configPath)
-		s.render(w, "tunnel_form", FormPage{ContentTemplate: "tunnelFormContent", Error: msg, Config: cfg, Defaults: cfg, Daemon: s.daemonOnline()})
+		s.render(w, "tunnel_form", FormPage{ContentTemplate: "tunnelFormContent", Error: msg, Config: cfg, Defaults: cfg})
 	default:
 		s.render(w, "dashboard", DashboardPage{ContentTemplate: "dashboardContent", Error: msg})
 	}
-}
-
-func (s *Server) daemonOnline() bool {
-	resp, err := control.Do(s.socketPath, control.Request{Command: "status"})
-	return err == nil && resp.OK
 }
 
 func (s *Server) logPath(name string) string {
