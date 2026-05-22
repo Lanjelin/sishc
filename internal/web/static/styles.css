@@ -770,10 +770,10 @@ a:hover { text-decoration: underline; }
   font-weight: 700;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
 }
-.badge.ok { background: var(--badge-ok-bg); color: var(--badge-ok-text); border-color: var(--badge-ok-border); }
-.badge.warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); border-color: var(--badge-warn-border); }
-.badge.bad { background: var(--badge-bad-bg); color: var(--badge-bad-text); border-color: var(--badge-bad-border); }
-.badge.muted { background: var(--badge-muted-bg); color: var(--badge-muted-text); border-color: var(--badge-muted-border); }
+.badge.ok { background: var(--badge-ok-bg); color: var(--badge-ok-text); border-color: color-mix(in srgb, currentColor 42%, transparent); }
+.badge.warn { background: var(--badge-warn-bg); color: var(--badge-warn-text); border-color: color-mix(in srgb, currentColor 42%, transparent); }
+.badge.bad { background: var(--badge-bad-bg); color: var(--badge-bad-text); border-color: color-mix(in srgb, currentColor 42%, transparent); }
+.badge.muted { background: var(--badge-muted-bg); color: var(--badge-muted-text); border-color: color-mix(in srgb, currentColor 42%, transparent); }
 
 .table-wrap { overflow-x: auto; }
 table.table {
