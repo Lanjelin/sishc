@@ -16,9 +16,9 @@ LABEL org.opencontainers.image.description="Go daemon and web UI to manage sish 
 LABEL org.opencontainers.image.author="Lanjelin"
 LABEL org.opencontainers.image.licenses=GPL-3.0
 
-ARG SISHC_USER=sishc
-ARG SISHC_UID=1000
-ARG SISHC_GID=1000
+ENV SISHC_USER="sishc"
+ENV PUID="1000"
+ENV PGID="1000"
 
 ENV HOME="/config"
 ENV SISHC_LOG_DIR="${HOME}/logs"
@@ -29,20 +29,15 @@ ENV SISHC_KNOWN_HOSTS="${HOME}/.ssh/known_hosts"
 RUN apk --no-cache add \
   tini \
   openssh-client \
+  su-exec \
   ca-certificates
 
-RUN addgroup -S -g "${SISHC_GID}" "${SISHC_USER}" \
-  && adduser -S -D -u "${SISHC_UID}" -G "${SISHC_USER}" -h "${HOME}" "${SISHC_USER}" \
-  && mkdir -p "${HOME}" \
-  && mkdir -p "${HOME}/.ssh" \
-  && chown -R "${SISHC_USER}:${SISHC_USER}" "${HOME}"
-
 COPY --from=build /out/sishc /usr/local/bin/sishc
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR "${HOME}"
 VOLUME "${HOME}"
 
-USER ${SISHC_USER}
-
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/local/bin/sishc"]

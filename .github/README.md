@@ -115,16 +115,17 @@ If `web_enabled` is false or omitted, the daemon runs tunnels only.
 
 ## Docker
 
-The image runs as a non-root user by default.
+The image starts as root, creates a runtime user from `PUID` / `PGID`, and then drops privileges with `su-exec`.
 
-For a host-mounted `/config`, build with matching ownership:
+For a host-mounted `/config`, set matching ownership at runtime:
 
 ```text
-docker build \
-  --build-arg SISHC_UID=$(id -u) \
-  --build-arg SISHC_GID=$(id -g) \
-  -t sishc .
+docker run \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
+  -v "$(pwd)/config:/config" \
+  -p 5000:5000 \
+  sishc
 ```
 
-If you want a different default user inside the image, override `SISHC_USER`,
-`SISHC_UID`, and `SISHC_GID` at build time.
+The compose example uses the same `PUID` / `PGID` values by default.
