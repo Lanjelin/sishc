@@ -830,15 +830,21 @@
 
   function bindDashboard() {
     const banner = document.getElementById('daemon-state');
-    const stamp = document.getElementById('status-updated');
     const table = document.getElementById('tunnels-table');
-    if (!banner || !stamp) {
+    if (!banner) {
       return;
     }
 
-    function updateStamp(now) {
-      stamp.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      stamp.title = now.toLocaleString();
+    function updateBannerStamp(now) {
+      banner.title = now.toLocaleString([], {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
     }
 
     async function refreshStatus() {
@@ -849,13 +855,12 @@
         if (!data.ok) {
           banner.textContent = t('status.offline');
           banner.className = 'badge bad';
-          stamp.textContent = data.error || t('status.service_offline');
-          stamp.title = data.error || t('status.service_offline');
+          banner.title = data.error || t('status.service_offline');
           return;
         }
         banner.textContent = t('status.online');
         banner.className = 'badge ok';
-        updateStamp(new Date());
+        updateBannerStamp(new Date());
         if (table) {
           const rows = new Map((data.statuses || []).map(st => [st.name, st]));
           document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
@@ -876,7 +881,7 @@
       } catch (err) {
         banner.textContent = t('status.offline');
         banner.className = 'badge bad';
-        stamp.textContent = t('status.service_unavailable');
+        banner.title = t('status.service_unavailable');
       }
     }
 

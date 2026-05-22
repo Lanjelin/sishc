@@ -30,7 +30,6 @@
       <div class="topbar-right">
         <div class="statusbar topbar-status">
           <span class="badge {{ if .Daemon }}ok{{ else }}bad{{ end }}" id="daemon-state">{{ if .Daemon }}online{{ else }}offline{{ end }}</span>
-          <span class="muted" id="status-updated"></span>
         </div>
         <div class="topbar-actions">
           <a class="button tiny" href="/tunnels/new" data-i18n="dashboard.add_tunnel">Add tunnel</a>
