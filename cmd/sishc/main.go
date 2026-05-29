@@ -21,6 +21,7 @@ import (
 
 	"github.com/lanjelin/sishc/internal/config"
 	"github.com/lanjelin/sishc/internal/control"
+	"github.com/lanjelin/sishc/internal/logwatch"
 	"github.com/lanjelin/sishc/internal/tunnels"
 	sishweb "github.com/lanjelin/sishc/internal/web"
 )
@@ -413,12 +414,12 @@ func followLogFile(ctx context.Context, path string, out io.Writer, startOffset 
 			}
 			return err
 		}
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			if lastDev != 0 && (lastDev != uint64(stat.Dev) || lastIno != uint64(stat.Ino)) {
+		if dev, ino, ok := logwatch.FileIdentity(info); ok {
+			if lastDev != 0 && (lastDev != dev || lastIno != ino) {
 				offset = 0
 			}
-			lastDev = uint64(stat.Dev)
-			lastIno = uint64(stat.Ino)
+			lastDev = dev
+			lastIno = ino
 		}
 		if info.Size() < offset {
 			offset = 0
