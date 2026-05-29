@@ -1,0 +1,34 @@
+{{ define "logs" }}{{ template "base" . }}{{ end }}
+
+{{ define "logsContent" }}
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h1 data-i18n="logs.title">Logs</h1>
+      <p class="muted">{{ .Name }}</p>
+    </div>
+    <div class="panel-actions">
+      <a class="button secondary" href="/logs/{{ .Name }}?tail={{ .Tail }}" data-i18n="logs.refresh">Refresh</a>
+      <a class="button secondary" href="/logs/{{ .Name }}?tail={{ .Tail }}{{ if .Follow }}&follow=0{{ else }}&follow=1{{ end }}" data-i18n-follow="{{ if .Follow }}logs.pause_follow{{ else }}logs.follow{{ end }}">
+        {{ if .Follow }}Pause follow{{ else }}Follow{{ end }}
+      </a>
+    </div>
+  </div>
+  {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
+  {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
+  <pre id="log-output" class="log-output">{{ range .Lines }}{{ . }}
+{{ end }}</pre>
+</section>
+
+{{ if .Follow }}
+<script>
+(function() {
+  const box = document.getElementById('log-output');
+  const src = new EventSource('/logs/{{ .Name }}/stream');
+  src.addEventListener('line', function(ev) {
+    box.insertAdjacentHTML('afterbegin', ev.data + '\n');
+  });
+})();
+</script>
+{{ end }}
+{{ end }}

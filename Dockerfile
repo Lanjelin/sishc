@@ -1,40 +1,43 @@
+FROM golang:1.24-alpine AS build
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN go build -o /out/sishc ./cmd/sishc
+
 FROM alpine:3.20
 
 LABEL org.opencontainers.image.source=https://github.com/lanjelin/sishc
 LABEL org.opencontainers.image.title="SISHC Tunnel Manager"
-LABEL org.opencontainers.image.description="Bash script and WEB GUI to manage sish tunnels."
+LABEL org.opencontainers.image.description="Go daemon and web UI to manage sish tunnels."
 LABEL org.opencontainers.image.author="Lanjelin"
 LABEL org.opencontainers.image.licenses=GPL-3.0
 
-ENV SISHC_OUTPUT_LOG="/config/sishc.log"
-ENV SISHC_CONFIG_FILE="/config/config.yaml"
+ENV SISHC_USER="sishc"
+ENV PUID="1000"
+ENV PGID="1000"
+
 ENV HOME="/config"
-ENV PUID=1000
-ENV PGID=1000
+ENV SISHC_LOG_DIR="${HOME}/logs"
+ENV SISHC_CONFIG_FILE="${HOME}/config.yaml"
+ENV SISHC_SOCKET="${HOME}/sishc.sock"
+ENV SISHC_KNOWN_HOSTS="${HOME}/.ssh/known_hosts"
 
-COPY . .
+RUN apk --no-cache add \
+  tini \
+  openssh-client \
+  su-exec \
+  ca-certificates
 
-RUN \
-  apk --no-cache add --update \
-    tini \
-    wget \
-    bash \
-    tzdata \
-    shadow \
-    openssh \
-    su-exec \
-    autossh \
-    python3 \
-    py3-pip \
-    py3-yaml \
-    py3-flask && \
-  wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
-    chmod +x /usr/bin/yq && \
-  apk del wget && \
-  adduser -s /bin/bash -D --home /config -u $PUID -g $PGID abc
+COPY --from=build /out/sishc /usr/local/bin/sishc
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-WORKDIR /config
-VOLUME /config
+WORKDIR "${HOME}"
+VOLUME "${HOME}"
 
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/bin/bash", "/entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+CMD ["/usr/local/bin/sishc"]

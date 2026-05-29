@@ -1,0 +1,50 @@
+{{ define "settings" }}{{ template "base" . }}{{ end }}
+
+{{ define "settingsContent" }}
+  <section class="panel form-panel">
+  <div class="panel-head">
+    <div>
+      <h1 data-i18n="settings.title">Settings</h1>
+    </div>
+  </div>
+
+  <div class="kv-list">
+    <div class="kv-row">
+      <label for="theme" data-i18n="settings.theme">Theme</label>
+      <select id="theme" name="theme">
+        <option value="default" data-i18n="theme.default">Default</option>
+        <option value="alucard" data-i18n="theme.alucard">Alucard</option>
+        <option value="dracula" data-i18n="theme.dracula">Dracula</option>
+        <option value="catppuccin-latte" data-i18n="theme.catppuccin-latte">Catppuccin Latte</option>
+        <option value="catppuccin-frappe" data-i18n="theme.catppuccin-frappe">Catppuccin Frappé</option>
+        <option value="catppuccin-macchiato" data-i18n="theme.catppuccin-macchiato">Catppuccin Macchiato</option>
+        <option value="catppuccin-mocha" data-i18n="theme.catppuccin-mocha">Catppuccin Mocha</option>
+        <option value="gruvbox" data-i18n="theme.gruvbox">Gruvbox</option>
+        <option value="solarized-light" data-i18n="theme.solarized-light">Solarized Light</option>
+        <option value="solarized-dark" data-i18n="theme.solarized-dark">Solarized Dark</option>
+        <option value="nord" data-i18n="theme.nord">Nord</option>
+        <option value="tokyo-night" data-i18n="theme.tokyo-night">Tokyo Night</option>
+        <option value="light" data-i18n="theme.light">Light</option>
+        <option value="soft-dawn" data-i18n="theme.soft-dawn">Soft Dawn</option>
+      </select>
+    </div>
+    <div class="kv-row">
+      <label for="language" data-i18n="settings.language">Language</label>
+      <select id="language" name="language">
+        <option value="en">English</option>
+        <option value="no">Norsk</option>
+        <option value="es">Español</option>
+        <option value="sv">Svenska</option>
+        <option value="da">Dansk</option>
+        <option value="fi">Suomi</option>
+        <option value="de">Deutsch</option>
+        <option value="nl">Nederlands</option>
+        <option value="fr">Français</option>
+        <option value="pt">Português</option>
+        <option value="it">Italiano</option>
+        <option value="pl">Polski</option>
+      </select>
+    </div>
+  </div>
+</section>
+{{ end }}

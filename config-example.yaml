@@ -1,23 +1,29 @@
-# Global Configuration
 ssh_key: "~/.ssh/id_rsa"
-local_protocol: "http"
-local_host: "localhost"
-local_port: 8080
-remote_port: 2222
-remote_server: "example.com"
-# Tunnel Specific Configurations
+remote_port: 1433
+remote_server: sish.example.com
+local_host: caddy
+local_port: 80
+web_enabled: true
+web_listen: 127.0.0.1:5000
+
 tunnels:
-  - name: "first_tunnel"
-    local_protocol: "http"
-    local_host: "localhost"
-    local_port: 8080
-    remote_port: 2222
-    remote_server: "example.com"
-  - name: "second_tunnel"
-    local_protocol: "https"
-    local_port: 4433
-    disabled: True
+  - name: test1.example.com
+
+  - name: test2
+    enabled: false
+    local_host: example_host
+
+  - name: test3
+    local_port: 1443
+
+  - name: test4
+    local_host: example_host2
+    local_port: 3000
+    ssh_key: "~/.ssh/id_rsa2"
+    remote_server: sish2.example.com
+    remote_port: 1723
+
   - name: "2512" # Expose ssh port to example.com:2512
-    local_host: 192.168.1.101
+    local_host: 192.168.50.80
     local_port: 22
     local_protocol: tcp

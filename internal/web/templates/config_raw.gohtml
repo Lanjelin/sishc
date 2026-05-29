@@ -1,0 +1,25 @@
+{{ define "config_raw" }}{{ template "base" . }}{{ end }}
+
+{{ define "configRawContent" }}
+<section class="panel form-panel">
+  <div class="panel-head">
+    <div>
+      <h1 data-i18n="config.raw_title">Raw config</h1>
+    </div>
+    <div class="panel-actions">
+      <a class="button secondary" href="/config" data-i18n="config.structured">Structured config</a>
+    </div>
+  </div>
+  {{ if .Message }}<div class="notice ok">{{ .Message }}</div>{{ end }}
+  {{ if .Error }}<div class="notice bad">{{ .Error }}</div>{{ end }}
+  <form method="post" action="/config/raw" class="form">
+    <label class="stack editor">
+      <span data-i18n="config.yaml">YAML</span>
+      <textarea name="raw" rows="18" class="code">{{ .Raw }}</textarea>
+    </label>
+    <div class="panel-actions footer-actions">
+      <button class="button" type="submit" data-i18n="config.raw_save">Save config</button>
+    </div>
+  </form>
+</section>
+{{ end }}
