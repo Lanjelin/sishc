@@ -21,6 +21,7 @@ import (
 
 	"github.com/lanjelin/sishc/internal/config"
 	"github.com/lanjelin/sishc/internal/control"
+	"github.com/lanjelin/sishc/internal/lockfile"
 	"github.com/lanjelin/sishc/internal/logwatch"
 	"github.com/lanjelin/sishc/internal/tunnels"
 	sishweb "github.com/lanjelin/sishc/internal/web"
@@ -100,10 +101,7 @@ func runDaemon(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-		_ = lockFile.Close()
-	}()
+	defer func() { _ = lockFile.Release() }()
 	cfg, err := config.Load(paths.configPath)
 	if err != nil {
 		if os.IsNotExist(err) && isInteractive(os.Stdin) {
@@ -165,24 +163,8 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 }
 
-func acquireConfigLock(configPath string) (*os.File, error) {
-	absPath, err := filepath.Abs(configPath)
-	if err != nil {
-		absPath = configPath
-	}
-	lockPath := absPath + ".lock"
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("another daemon is already running for %s", configPath)
-	}
-	return f, nil
+func acquireConfigLock(configPath string) (*lockfile.Lock, error) {
+	return lockfile.Acquire(configPath)
 }
 
 func preflightDependencies() error {

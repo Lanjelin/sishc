@@ -91,15 +91,11 @@ targets=(
   "linux arm64"
   "darwin amd64"
   "darwin arm64"
-  "windows amd64"
 )
 
 for target in "${targets[@]}"; do
   read -r goos goarch <<<"$target"
   out="$OUT_DIR/$VERSION/sishc_${goos}_${goarch}"
-  if [[ "$goos" == "windows" ]]; then
-    out+=".exe"
-  fi
   printf 'building %s/%s -> %s\n' "$goos" "$goarch" "$out"
   GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -o "$out" ./cmd/sishc
 done

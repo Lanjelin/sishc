@@ -517,7 +517,7 @@ func TestAcquireConfigLockPreventsSecondDaemon(t *testing.T) {
 		t.Fatalf("acquireConfigLock() error = %v", err)
 	}
 	defer func() {
-		_ = lockFile.Close()
+		_ = lockFile.Release()
 	}()
 
 	if _, err := acquireConfigLock(cfgPath); err == nil || !strings.Contains(err.Error(), "another daemon is already running") {
