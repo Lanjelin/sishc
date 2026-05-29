@@ -95,6 +95,50 @@ Notes:
 - `status` can show one tunnel in detail
 - `logs --follow` follows rotated log files
 
+## CLI examples
+
+```bash
+sishc add test229 localhost
+```
+
+Uses the global local port and only overrides the host.
+
+```bash
+sishc update test229 :9090
+```
+
+Updates only the local port. The host stays as-is.
+
+```bash
+sishc add test331 6080
+```
+
+Uses `127.0.0.1` as the host and `6080` as the port.
+
+```bash
+sishc status test229
+```
+
+Shows one tunnel instead of the full table.
+
+```bash
+sishc logs --follow test229
+```
+
+Follows the tunnel log live.
+
+```bash
+sishc o --local-protocol https cockpit.example.com 192.168.50.197:9090
+```
+
+One-off HTTPS tunnel to `cockpit.example.com`.
+
+```bash
+sishc oneoff test229 localhost:8080
+```
+
+One-off tunnel with a fixed remote name and local `host:port`.
+
 ## Defaults and paths
 
 All defaults are XDG compliant.
