@@ -44,8 +44,8 @@ These are placeholders for now.
 
 | Dashboard | Config |
 | --- | --- |
-| ![Dashboard](./screenshots/sishc.png) | ![Config](./screenshots/sishc.png) |
-| ![Logs](./screenshots/sishc.png) | ![Settings](./screenshots/sishc.png) |
+| ![Dashboard](./screenshots/sishc.png) | ![Config](./screenshots/config.png) |
+| ![New Tunnel](./screenshots/tunnels_new.png) | ![Logs](./screenshots/logs_sishc.png) |
 
 ## What it does
 
