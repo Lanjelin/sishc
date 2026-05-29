@@ -63,18 +63,18 @@ For the server side that `sishc` connects to, see:
 ## Commands
 
 ```text
-sishc daemon
-sishc status [--verbose] [<name>]
-sishc logs [--tail N] [--follow] <name|daemon>
-sishc validate
-sishc reconcile
-sishc add [flags] <name> [<local_host>][:<local_port>]
-sishc update [flags] [--new-name NAME] <name> [<local_host>][:<local_port>]
-sishc remove <name>
-sishc start <name>
-sishc stop <name>
-sishc oneoff [flags] [<name>] [<local_host>:]<local_port>
-sishc init [--config PATH]
+sishc daemon     Run the tunnel daemon
+sishc status, ls Show tunnel status
+sishc logs       Show tunnel logs
+sishc validate   Validate config and exit
+sishc reconcile  Reconcile config now
+sishc add, a     Add a tunnel
+sishc update, u  Update a tunnel
+sishc remove, rm Remove a tunnel
+sishc start      Enable a tunnel
+sishc stop       Disable a tunnel
+sishc oneoff, o  Run a temporary tunnel
+sishc init       Create config interactively
 ```
 
 Tunnel flags:
@@ -116,7 +116,7 @@ sishc add test331 6080
 Uses `127.0.0.1` as the host and `6080` as the port.
 
 ```bash
-sishc status test229
+sishc ls test229
 ```
 
 Shows one tunnel instead of the full table.

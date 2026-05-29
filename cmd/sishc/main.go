@@ -45,6 +45,8 @@ func main() {
 	switch cmd {
 	case "daemon":
 		err = runDaemon(ctx, args)
+	case "ls":
+		fallthrough
 	case "status":
 		err = runStatus(args)
 	case "validate":
@@ -1273,7 +1275,7 @@ func usageText() string {
 
 Commands:
   daemon     Run the tunnel daemon
-  status     Show tunnel status
+  status, ls Show tunnel status
   logs       Show tunnel logs
   validate   Validate config and exit
   reconcile  Reconcile config now
