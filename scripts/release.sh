@@ -26,6 +26,7 @@ die() {
 VERSION=""
 OUT_DIR="dist"
 DOCKER_PLATFORMS="linux/amd64,linux/arm64"
+BUILDX_BUILDER="${SISHC_BUILDX_BUILDER:-sishc-release}"
 PUBLISH=0
 
 while (($#)); do
@@ -121,6 +122,12 @@ if (( PUBLISH )); then
   fi
 
   printf 'pushing Docker image ghcr.io/lanjelin/sishc:%s\n' "$VERSION"
+  if ! docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
+    docker buildx create --name "$BUILDX_BUILDER" --driver docker-container --use >/dev/null
+  else
+    docker buildx use "$BUILDX_BUILDER" >/dev/null
+  fi
+  docker buildx inspect --bootstrap "$BUILDX_BUILDER" >/dev/null
   docker buildx build \
     --platform "$DOCKER_PLATFORMS" \
     -t "ghcr.io/lanjelin/sishc:$VERSION" \
