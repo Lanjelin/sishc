@@ -54,11 +54,10 @@ sishc status
 ## What it does
 
 - manages tunnel config through the CLI
+- can start a web UI from config if `web_enabled: true` is set
 - writes per-tunnel logs with rotation
 - supports temporary `oneoff` tunnels without touching config
-- can start the web UI from config with `web_enabled: true`
-
-It keeps config as the source of truth and runs one tunnel manager per config file.
+- keeps tunnels alive and automatically reconnects on connection drops
 
 For the server side that `sishc` connects to, see:
 
