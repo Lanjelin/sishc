@@ -40,12 +40,16 @@ sishc status
 
 ## Screenshots
 
-These are placeholders for now.
-
-| Dashboard | Config |
-| --- | --- |
-| ![Dashboard](./screenshots/sishc.png) | ![Config](./screenshots/config.png) |
-| ![New Tunnel](./screenshots/tunnels_new.png) | ![Logs](./screenshots/logs_sishc.png) |
+<table>
+  <tr>
+    <td><figure><img src="./screenshots/sishc.png" alt="Dashboard"><figcaption>Dashboard</figcaption></figure></td>
+    <td><figure><img src="./screenshots/config.png" alt="Config"><figcaption>Config</figcaption></figure></td>
+  </tr>
+  <tr>
+    <td><figure><img src="./screenshots/tunnels_new.png" alt="Add tunnel"><figcaption>Add tunnel</figcaption></figure></td>
+    <td><figure><img src="./screenshots/logs_sishc.png" alt="Logs"><figcaption>Logs</figcaption></figure></td>
+  </tr>
+</table>
 
 ## What it does
 
