@@ -703,6 +703,8 @@ func shouldSkipLogLine(line string) bool {
 		return true
 	case strings.HasPrefix(line, "HTTP: "):
 		return true
+	case strings.HasPrefix(line, "TCP: "):
+		return true
 	default:
 		return false
 	}

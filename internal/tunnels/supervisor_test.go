@@ -154,6 +154,47 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	}
 }
 
+func TestSupervisorTracksTcpRemote(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "tcp", LocalProtocol: "tcp", LocalHost: "localhost", LocalPort: 9090, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 4321}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		_, _ = logWriter.Write([]byte("Starting SSH Forwarding service for tcp:5000. Forwarded connections can be accessed via the following methods:\n"))
+		_, _ = logWriter.Write([]byte("TCP: example.com:5000\n"))
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	st, ok := s.StatusFor("tcp")
+	if !ok {
+		t.Fatal("StatusFor() missing tcp tunnel")
+	}
+	if st.Remote != "tcp://example.com:5000" {
+		t.Fatalf("status remote = %q, want tcp://example.com:5000", st.Remote)
+	}
+
+	proc.waitCh <- nil
+	time.Sleep(10 * time.Millisecond)
+}
+
 func TestSupervisorRemovesTunnelFromStatusAfterConfigRemoval(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"

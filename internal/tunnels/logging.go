@@ -168,6 +168,8 @@ func parseAssignedURL(line string) (string, bool, bool) {
 		return strings.TrimSpace(strings.TrimPrefix(line, "HTTPS: ")), true, true
 	case strings.HasPrefix(line, "HTTP: "):
 		return strings.TrimSpace(strings.TrimPrefix(line, "HTTP: ")), false, true
+	case strings.HasPrefix(line, "TCP: "):
+		return "tcp://" + strings.TrimSpace(strings.TrimPrefix(line, "TCP: ")), false, true
 	default:
 		return "", false, false
 	}
@@ -215,6 +217,8 @@ func normalizeTunnelControlLine(line string) string {
 		case strings.HasPrefix(rest, "HTTPS: "):
 			return rest
 		case strings.HasPrefix(rest, "HTTP: "):
+			return rest
+		case strings.HasPrefix(rest, "TCP: "):
 			return rest
 		}
 	}
