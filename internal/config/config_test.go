@@ -215,6 +215,18 @@ func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 		t.Fatalf("BuildTunnel() LocalProtocol = %q, want http", tunnel.LocalProtocol)
 	}
 
+	httpCfg := cfg
+	httpCfg.LocalProtocol = "https"
+	httpOverrideGlobal, err := BuildTunnel("one-explicit-http", "localhost:8080", httpCfg, TunnelBuildOptions{
+		LocalProtocol: "http",
+	})
+	if err != nil {
+		t.Fatalf("BuildTunnel() explicit http error = %v", err)
+	}
+	if httpOverrideGlobal.LocalProtocol != "http" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want http", httpOverrideGlobal.LocalProtocol)
+	}
+
 	tcpCfg := cfg
 	tcpCfg.LocalProtocol = "tcp"
 	tcpFromGlobal, err := BuildTunnel("three", "localhost:8081", tcpCfg, TunnelBuildOptions{})
@@ -233,6 +245,16 @@ func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 	}
 	if httpsFromGlobal.LocalProtocol != "https" {
 		t.Fatalf("BuildTunnel() LocalProtocol = %q, want https", httpsFromGlobal.LocalProtocol)
+	}
+
+	tcpOverrideHttps, err := BuildTunnel("fourb", "localhost:8083", httpsCfg, TunnelBuildOptions{
+		LocalProtocol: "tcp",
+	})
+	if err != nil {
+		t.Fatalf("BuildTunnel() tcp override https error = %v", err)
+	}
+	if tcpOverrideHttps.LocalProtocol != "tcp" {
+		t.Fatalf("BuildTunnel() LocalProtocol = %q, want tcp", tcpOverrideHttps.LocalProtocol)
 	}
 
 	tcpTunnel, err := BuildTunnel("two", "127.0.0.1:22", cfg, TunnelBuildOptions{
@@ -265,6 +287,38 @@ func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 	}
 	if httpsTunnel.LocalProtocol != "https" {
 		t.Fatalf("BuildTunnel() LocalProtocol = %q, want https", httpsTunnel.LocalProtocol)
+	}
+}
+
+func TestEffectiveTunnelLocalProtocolOverridesGlobal(t *testing.T) {
+	cfg := Config{LocalProtocol: "https"}
+	tunnel := cfg.EffectiveTunnel(Tunnel{
+		Name:          "one",
+		LocalProtocol: "tcp",
+	})
+	if tunnel.LocalProtocol != "tcp" {
+		t.Fatalf("EffectiveTunnel() LocalProtocol = %q, want tcp", tunnel.LocalProtocol)
+	}
+}
+
+func TestResolveProtocol(t *testing.T) {
+	cases := []struct {
+		name   string
+		local  string
+		global string
+		want   string
+	}{
+		{name: "follow global", local: "", global: "https", want: "https"},
+		{name: "explicit http", local: "http", global: "https", want: "http"},
+		{name: "explicit tcp", local: "tcp", global: "https", want: "tcp"},
+		{name: "global http", local: "", global: "http", want: "http"},
+		{name: "fallback default", local: "", global: "", want: "http"},
+	}
+
+	for _, tc := range cases {
+		if got := resolveProtocol(tc.local, tc.global); got != tc.want {
+			t.Fatalf("%s: resolveProtocol(%q, %q) = %q, want %q", tc.name, tc.local, tc.global, got, tc.want)
+		}
 	}
 }
 

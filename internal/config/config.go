@@ -179,14 +179,7 @@ func (c Config) EffectiveTunnel(t Tunnel) Tunnel {
 	if t.SSHKey == "" {
 		t.SSHKey = c.SSHKey
 	}
-	switch {
-	case strings.EqualFold(t.LocalProtocol, "https") || strings.EqualFold(c.LocalProtocol, "https"):
-		t.LocalProtocol = "https"
-	case strings.EqualFold(t.LocalProtocol, "tcp") || strings.EqualFold(c.LocalProtocol, "tcp"):
-		t.LocalProtocol = "tcp"
-	default:
-		t.LocalProtocol = "http"
-	}
+	t.LocalProtocol = resolveProtocol(t.LocalProtocol, c.LocalProtocol)
 	if t.LocalHost == "" {
 		t.LocalHost = c.LocalHost
 	}
@@ -237,13 +230,7 @@ func buildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions, re
 		return Tunnel{}, fmt.Errorf("remote_server is required")
 	}
 
-	protocol := "http"
-	switch {
-	case strings.EqualFold(strings.TrimSpace(opts.LocalProtocol), "https") || strings.EqualFold(cfg.LocalProtocol, "https"):
-		protocol = "https"
-	case strings.EqualFold(strings.TrimSpace(opts.LocalProtocol), "tcp") || strings.EqualFold(cfg.LocalProtocol, "tcp"):
-		protocol = "tcp"
-	}
+	protocol := resolveProtocol(opts.LocalProtocol, cfg.LocalProtocol)
 
 	return Tunnel{
 		Name:          name,
@@ -298,6 +285,25 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func resolveProtocol(local string, global string) string {
+	switch {
+	case strings.EqualFold(strings.TrimSpace(local), "https"):
+		return "https"
+	case strings.EqualFold(strings.TrimSpace(local), "tcp"):
+		return "tcp"
+	case strings.EqualFold(strings.TrimSpace(local), "http"):
+		return "http"
+	case strings.EqualFold(strings.TrimSpace(global), "https"):
+		return "https"
+	case strings.EqualFold(strings.TrimSpace(global), "tcp"):
+		return "tcp"
+	case strings.EqualFold(strings.TrimSpace(global), "http"):
+		return "http"
+	default:
+		return "http"
+	}
 }
 
 func (c *Config) UpsertTunnel(t Tunnel) {

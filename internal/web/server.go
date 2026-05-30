@@ -208,7 +208,7 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg.SSHKey = strings.TrimSpace(r.FormValue("ssh_key"))
-	cfg.LocalProtocol = normalizeProtocol(r.FormValue("local_protocol"))
+	cfg.LocalProtocol = normalizeGlobalProtocol(r.FormValue("local_protocol"))
 	cfg.LocalHost = strings.TrimSpace(r.FormValue("local_host"))
 	if n, err := parseFormInt(r.FormValue("local_port")); err != nil {
 		s.renderError(w, "config", err.Error())
@@ -601,7 +601,7 @@ func buildTunnelFromForm(cfg config.Config, existing *config.Tunnel, r *http.Req
 		tunnel.SSHKey = ""
 	}
 	if raw := r.FormValue("local_protocol"); raw != "" {
-		tunnel.LocalProtocol = normalizeProtocol(raw)
+		tunnel.LocalProtocol = normalizeTunnelProtocol(raw)
 	} else if existing != nil {
 		tunnel.LocalProtocol = ""
 	}
@@ -665,14 +665,25 @@ func fallbackDetail(tunnel config.Tunnel) string {
 	return "not running"
 }
 
-func normalizeProtocol(value string) string {
+func normalizeGlobalProtocol(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "http":
+	case "", "follow", "global", "inherit":
 		return ""
-	case "tcp", "https":
+	case "http", "tcp", "https":
 		return strings.ToLower(strings.TrimSpace(value))
 	default:
-		return strings.TrimSpace(value)
+		return ""
+	}
+}
+
+func normalizeTunnelProtocol(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "follow", "global", "inherit":
+		return ""
+	case "http", "tcp", "https":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return ""
 	}
 }
 
