@@ -97,11 +97,6 @@ func runDaemon(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	lockFile, err := acquireConfigLock(paths.configPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = lockFile.Release() }()
 	cfg, err := config.Load(paths.configPath)
 	if err != nil {
 		if os.IsNotExist(err) && isInteractive(os.Stdin) {
@@ -128,6 +123,11 @@ func runDaemon(ctx context.Context, args []string) error {
 	if err := preflightDependencies(); err != nil {
 		return err
 	}
+	lockFile, err := acquireConfigLock(paths.configPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lockFile.Release() }()
 
 	supervisor := tunnels.NewSupervisor(paths.configPath, paths.logDir, nil)
 	errCh := make(chan error, 3)
