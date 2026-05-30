@@ -139,6 +139,7 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /logs/{name}", s.handleLogsGet)
 	mux.HandleFunc("GET /logs/{name}/stream", s.handleLogsStream)
 	mux.HandleFunc("GET /api/status", s.handleStatusAPI)
+	mux.HandleFunc("GET /api/status/stream", s.handleStatusStream)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSubFS(assets, "static")))))
 
 	server := &http.Server{Addr: s.listen, Handler: mux}
@@ -454,6 +455,27 @@ func (s *Server) handleStatusAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	sortStatuses(resp.Statuses)
 	writeJSON(w, StatusAPI{OK: true, Statuses: resp.Statuses})
+}
+
+func (s *Server) handleStatusStream(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	_ = control.Stream(s.socketPath, control.Request{Command: "status-stream"}, func(event control.StatusEvent) error {
+		data, err := json.Marshal(event)
+		if err != nil {
+			return err
+		}
+		writeSSE(w, event.Type, string(data))
+		flusher.Flush()
+		return nil
+	})
 }
 
 func (s *Server) setTunnelEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {

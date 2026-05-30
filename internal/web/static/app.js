@@ -774,39 +774,62 @@
       return;
     }
 
-    async function refreshStatus() {
-      try {
-        const res = await fetch('/api/status', { cache: 'no-store' });
-        const data = await res.json();
-        if (table) {
-          const rows = new Map((data.statuses || []).map(st => [st.name, st]));
-          document.querySelectorAll('#tunnels-table tbody tr[data-name]').forEach(row => {
-            const name = row.getAttribute('data-name');
-            const st = rows.get(name);
-            if (!st) return;
-            const state = row.querySelector('[data-field="state"]');
-            const host = row.querySelector('[data-field="host"]');
-            const port = row.querySelector('[data-field="port"]');
-            const remote = row.querySelector('[data-field="remote"]');
-            state.textContent = st.state || '-';
-            state.className = 'badge ' + ((st.state === 'running') ? 'ok' : ((st.state === 'disabled') ? 'muted' : ((st.state === 'error' || st.state === 'stale') ? 'bad' : 'warn')));
-            if (st.state === 'error' && st.detail) {
-              state.title = st.detail;
-            } else {
-              state.removeAttribute('title');
-            }
-            host.textContent = st.local_host || '-';
-            port.textContent = st.local_port || '-';
-            renderRemoteCell(remote, st.remote || '-');
-          });
-        }
-      } catch (err) {
+    function applyStatus(st) {
+      if (!st || !st.name) {
         return;
+      }
+      const row = document.querySelector('#tunnels-table tbody tr[data-name="' + CSS.escape(st.name) + '"]');
+      if (!row) {
+        return;
+      }
+      const state = row.querySelector('[data-field="state"]');
+      const host = row.querySelector('[data-field="host"]');
+      const port = row.querySelector('[data-field="port"]');
+      const remote = row.querySelector('[data-field="remote"]');
+      state.textContent = st.state || '-';
+      state.className = 'badge ' + ((st.state === 'running') ? 'ok' : ((st.state === 'disabled') ? 'muted' : ((st.state === 'error' || st.state === 'stale') ? 'bad' : 'warn')));
+      if (st.state === 'error' && st.detail) {
+        state.title = st.detail;
+      } else {
+        state.removeAttribute('title');
+      }
+      host.textContent = st.local_host || '-';
+      port.textContent = st.local_port || '-';
+      renderRemoteCell(remote, st.remote || '-');
+    }
+
+    function removeStatus(name) {
+      if (!name) {
+        return;
+      }
+      const row = document.querySelector('#tunnels-table tbody tr[data-name="' + CSS.escape(name) + '"]');
+      if (row) {
+        row.remove();
       }
     }
 
-    refreshStatus();
-    setInterval(refreshStatus, 5000);
+    const ev = new EventSource('/api/status/stream');
+    ev.addEventListener('snapshot', function(message) {
+      try {
+        applyStatus(JSON.parse(message.data).status);
+      } catch (err) {
+        return;
+      }
+    });
+    ev.addEventListener('status', function(message) {
+      try {
+        applyStatus(JSON.parse(message.data).status);
+      } catch (err) {
+        return;
+      }
+    });
+    ev.addEventListener('remove', function(message) {
+      try {
+        removeStatus(JSON.parse(message.data).name);
+      } catch (err) {
+        return;
+      }
+    });
   }
 
   function remoteHref(remoteText) {

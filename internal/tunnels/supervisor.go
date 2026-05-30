@@ -44,6 +44,12 @@ type Status struct {
 	LastExitCode int       `json:"last_exit_code,omitempty"`
 }
 
+type StatusEvent struct {
+	Type   string `json:"type"`
+	Name   string `json:"name,omitempty"`
+	Status Status `json:"status,omitempty"`
+}
+
 type Process interface {
 	Stop() error
 	Kill() error
@@ -68,6 +74,7 @@ type Supervisor struct {
 	processes   map[string]trackedProcess
 	stopping    map[string]Status
 	reconnects  map[string]*time.Timer
+	statusSubs  map[chan StatusEvent]struct{}
 	lastMod     time.Time
 }
 
@@ -94,6 +101,7 @@ func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 		processes:  make(map[string]trackedProcess),
 		stopping:   make(map[string]Status),
 		reconnects: make(map[string]*time.Timer),
+		statusSubs: make(map[chan StatusEvent]struct{}),
 	}
 }
 
@@ -156,10 +164,13 @@ func (s *Supervisor) closeDaemonLog() {
 }
 
 func (s *Supervisor) Snapshot() []Status {
-	visible := s.visibleTunnelNames()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.snapshotLocked()
+}
 
+func (s *Supervisor) snapshotLocked() []Status {
+	visible := s.visibleTunnelNames()
 	out := make([]Status, 0, len(s.status))
 	for _, st := range s.status {
 		if len(visible) > 0 {
@@ -172,6 +183,21 @@ func (s *Supervisor) Snapshot() []Status {
 		out = append(out, s.withRemote(st))
 	}
 	return out
+}
+
+func (s *Supervisor) SubscribeStatusEvents() (chan StatusEvent, func()) {
+	ch := make(chan StatusEvent, 32)
+	s.mu.Lock()
+	s.statusSubs[ch] = struct{}{}
+	s.mu.Unlock()
+	return ch, func() {
+		s.mu.Lock()
+		if _, ok := s.statusSubs[ch]; ok {
+			delete(s.statusSubs, ch)
+			close(ch)
+		}
+		s.mu.Unlock()
+	}
 }
 
 func (s *Supervisor) configChanged() (bool, error) {
@@ -187,6 +213,31 @@ func (s *Supervisor) configChanged() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (s *Supervisor) broadcastStatusLocked(name string) {
+	st, ok := s.status[name]
+	if !ok {
+		return
+	}
+	st = s.withRemote(st)
+	event := StatusEvent{Type: "status", Name: name, Status: st}
+	for ch := range s.statusSubs {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
+}
+
+func (s *Supervisor) broadcastRemoveLocked(name string) {
+	event := StatusEvent{Type: "remove", Name: name}
+	for ch := range s.statusSubs {
+		select {
+		case ch <- event:
+		default:
+		}
+	}
 }
 
 func (s *Supervisor) reconcile(ctx context.Context) error {
@@ -376,6 +427,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			s.remoteMu.Lock()
 			delete(s.remoteURLs, name)
 			s.remoteMu.Unlock()
+			s.broadcastRemoveLocked(name)
 		}
 	}
 
@@ -429,6 +481,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 			s.remoteMu.Lock()
 			delete(s.remoteURLs, name)
 			s.remoteMu.Unlock()
+			s.broadcastRemoveLocked(name)
 		} else {
 			s.clearRemoteURLLocked(name)
 			s.setStatusLocked(name, final.State, final.Detail, final.Command, final.LastExitCode, final.LocalHost, final.LocalPort, final.Remote)
@@ -534,6 +587,7 @@ func (s *Supervisor) setStatusLocked(name string, state State, detail string, co
 		UpdatedAt:    time.Now().UTC(),
 		LastExitCode: exitCode,
 	}
+	s.broadcastStatusLocked(name)
 }
 
 func tunnelSpec(t config.Tunnel) string {
@@ -772,11 +826,18 @@ func (s *Supervisor) withRemote(st Status) Status {
 
 func (s *Supervisor) recordAssignedURL(name, url string, secure bool) {
 	s.remoteMu.Lock()
-	defer s.remoteMu.Unlock()
 	current := s.remoteURLs[name]
 	if secure || current == "" || strings.HasPrefix(current, "http://") {
 		s.remoteURLs[name] = url
 	}
+	s.remoteMu.Unlock()
+	go s.publishStatus(name)
+}
+
+func (s *Supervisor) publishStatus(name string) {
+	s.mu.Lock()
+	s.broadcastStatusLocked(name)
+	s.mu.Unlock()
 }
 
 func (s *Supervisor) visibleTunnelNames() map[string]struct{} {
