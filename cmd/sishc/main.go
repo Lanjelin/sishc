@@ -117,7 +117,7 @@ func runDaemon(ctx context.Context, args []string) error {
 			return fmt.Errorf("config %q not found; run `sishc init --config %s`", paths.configPath, paths.configPath)
 		}
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		return fmt.Errorf("config validation error: %w", err)
 	}
 	if err := preflightDependencies(); err != nil {
@@ -1047,7 +1047,7 @@ func editConfig(configPath string, mutate func(*config.Config) error, socketPath
 	if err := mutate(&cfg); err != nil {
 		return err
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		return err
 	}
 	if err := config.Save(configPath, cfg); err != nil {
@@ -1105,7 +1105,7 @@ func initConfig(ctx context.Context, configPath string, in io.Reader, out io.Wri
 		return fmt.Errorf("invalid local protocol %q", protocol)
 	}
 
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		return err
 	}
 	if err := config.Save(configPath, cfg); err != nil {

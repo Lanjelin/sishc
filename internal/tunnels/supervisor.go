@@ -201,7 +201,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		return err
 	}
 	if info, err := os.Stat(s.cfgPath); err == nil {
@@ -211,7 +211,18 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 	}
 
 	desired := make(map[string]config.Tunnel, len(cfg.Tunnels))
+	invalid := make(map[string]string)
+	for _, issue := range cfg.TunnelIssues() {
+		invalid[issue.Name] = issue.Error
+	}
 	for _, tunnel := range cfg.Tunnels {
+		if issue, invalidTunnel := invalid[tunnel.Name]; invalidTunnel && strings.TrimSpace(tunnel.Name) != "" {
+			_ = issue
+			continue
+		}
+		if strings.TrimSpace(tunnel.LoadError) != "" {
+			continue
+		}
 		effective := cfg.EffectiveTunnel(tunnel)
 		desired[effective.Name] = effective
 	}
@@ -224,6 +235,23 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		tunnel, ok := desired[name]
 		switch {
 		case !ok:
+			if issue, invalidTunnel := invalid[name]; invalidTunnel {
+				s.cancelReconnectLocked(name)
+				fields := s.status[name]
+				s.lifecyclef("tunnel %s error: %s", name, issue)
+				_ = s.requestStopLocked(name, current, Status{
+					Name:         name,
+					State:        StateError,
+					Detail:       issue,
+					Command:      append([]string(nil), current.command...),
+					UpdatedAt:    time.Now().UTC(),
+					LastExitCode: 0,
+					LocalHost:    fields.LocalHost,
+					LocalPort:    fields.LocalPort,
+					Remote:       fields.Remote,
+				})
+				continue
+			}
 			s.cancelReconnectLocked(name)
 			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
@@ -329,6 +357,9 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 	for name := range s.status {
 		if _, ok := desired[name]; !ok {
+			if _, invalidTunnel := invalid[name]; invalidTunnel {
+				continue
+			}
 			if _, stopping := s.stopping[name]; stopping {
 				continue
 			}
@@ -338,6 +369,18 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			delete(s.remoteURLs, name)
 			s.remoteMu.Unlock()
 		}
+	}
+
+	for _, issue := range cfg.TunnelIssues() {
+		name := issue.Name
+		if _, running := s.processes[name]; running {
+			continue
+		}
+		if _, stopping := s.stopping[name]; stopping {
+			continue
+		}
+		s.lifecyclef("tunnel %s error: %s", name, issue.Error)
+		s.setStatusLocked(name, StateError, issue.Error, nil, 0, "", 0, "")
 	}
 
 	if len(restartLater) > 0 {
@@ -723,6 +766,9 @@ func (s *Supervisor) visibleTunnelNames() map[string]struct{} {
 	names := make(map[string]struct{}, len(cfg.Tunnels))
 	for _, tunnel := range cfg.Tunnels {
 		names[tunnel.Name] = struct{}{}
+	}
+	for _, issue := range cfg.TunnelIssues() {
+		names[issue.Name] = struct{}{}
 	}
 	return names
 }

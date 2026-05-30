@@ -26,6 +26,7 @@ type Tunnel struct {
 	RemoteServer  string `yaml:"remote_server,omitempty"`
 	Enabled       *bool  `yaml:"enabled,omitempty"`
 	Disabled      bool   `yaml:"disabled,omitempty"`
+	LoadError     string `yaml:"-"`
 }
 
 type Config struct {
@@ -195,6 +196,39 @@ func (c Config) EffectiveTunnel(t Tunnel) Tunnel {
 	return t
 }
 
+func (c Config) ValidateGlobals() error {
+	var errs []error
+
+	if err := c.ValidateRequiredGlobals(); err != nil {
+		errs = append(errs, err)
+	}
+	if c.LocalPort != 0 {
+		if err := validatePort(c.LocalPort, "local_port"); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.RemotePort != 0 {
+		if err := validatePort(c.RemotePort, "remote_port"); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if c.LocalHost != "" && !validHost(c.LocalHost) {
+		errs = append(errs, fmt.Errorf("local_host %q is not a valid hostname or IP address", c.LocalHost))
+	}
+	if c.RemoteServer != "" && !validHost(c.RemoteServer) {
+		errs = append(errs, fmt.Errorf("remote_server %q is not a valid hostname or IP address", c.RemoteServer))
+	}
+	if c.WebEnabled {
+		if listen := c.EffectiveWebListen(); listen != "" {
+			if _, _, err := net.SplitHostPort(listen); err != nil {
+				errs = append(errs, fmt.Errorf("web_listen %q is not a valid host:port", listen))
+			}
+		}
+	}
+
+	return errors.Join(errs...)
+}
+
 func BuildTunnel(name, localAddr string, cfg Config, opts TunnelBuildOptions) (Tunnel, error) {
 	return buildTunnel(name, localAddr, cfg, opts, true)
 }
@@ -362,56 +396,12 @@ func (c Config) Tunnel(name string) (Tunnel, bool) {
 
 func (c Config) Validate() error {
 	var errs []error
-
-	if c.LocalPort != 0 {
-		if err := validatePort(c.LocalPort, "local_port"); err != nil {
-			errs = append(errs, err)
-		}
+	if err := c.ValidateGlobals(); err != nil {
+		errs = append(errs, err)
 	}
-	if c.RemotePort != 0 {
-		if err := validatePort(c.RemotePort, "remote_port"); err != nil {
-			errs = append(errs, err)
-		}
+	for _, issue := range c.TunnelIssues() {
+		errs = append(errs, fmt.Errorf("tunnels[%d] (%s): %s", issue.Index, issue.Name, issue.Error))
 	}
-	if c.LocalHost != "" && !validHost(c.LocalHost) {
-		errs = append(errs, fmt.Errorf("local_host %q is not a valid hostname or IP address", c.LocalHost))
-	}
-	if c.RemoteServer != "" && !validHost(c.RemoteServer) {
-		errs = append(errs, fmt.Errorf("remote_server %q is not a valid hostname or IP address", c.RemoteServer))
-	}
-	if c.WebEnabled {
-		if listen := c.EffectiveWebListen(); listen != "" {
-			if _, _, err := net.SplitHostPort(listen); err != nil {
-				errs = append(errs, fmt.Errorf("web_listen %q is not a valid host:port", listen))
-			}
-		}
-	}
-
-	for i, tunnel := range c.Tunnels {
-		effective := c.EffectiveTunnel(tunnel)
-		if effective.Disabled {
-			continue
-		}
-		if effective.Name == "" {
-			errs = append(errs, fmt.Errorf("tunnels[%d].name is required", i))
-		}
-		if effective.SSHKey == "" {
-			errs = append(errs, fmt.Errorf("tunnels[%d].ssh_key is required", i))
-		}
-		if err := validatePort(effective.LocalPort, fmt.Sprintf("tunnels[%d].local_port", i)); err != nil {
-			errs = append(errs, err)
-		}
-		if err := validatePort(effective.RemotePort, fmt.Sprintf("tunnels[%d].remote_port", i)); err != nil {
-			errs = append(errs, err)
-		}
-		if !validHost(effective.LocalHost) {
-			errs = append(errs, fmt.Errorf("tunnels[%d].local_host %q is not a valid hostname or IP address", i, effective.LocalHost))
-		}
-		if !validHost(effective.RemoteServer) {
-			errs = append(errs, fmt.Errorf("tunnels[%d].remote_server %q is not a valid hostname or IP address", i, effective.RemoteServer))
-		}
-	}
-
 	return errors.Join(errs...)
 }
 
@@ -429,6 +419,65 @@ func (c Config) ValidateRequiredGlobals() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+type TunnelIssue struct {
+	Index int
+	Name  string
+	Error string
+}
+
+func (c Config) TunnelIssues() []TunnelIssue {
+	issues := make([]TunnelIssue, 0, len(c.Tunnels))
+	for i, tunnel := range c.Tunnels {
+		if issue := c.tunnelIssue(i, tunnel); issue != "" {
+			name := tunnel.Name
+			if strings.TrimSpace(name) == "" {
+				name = fmt.Sprintf("tunnels[%d]", i)
+			}
+			issues = append(issues, TunnelIssue{Index: i, Name: name, Error: issue})
+		}
+	}
+	return issues
+}
+
+func (c Config) tunnelIssue(index int, tunnel Tunnel) string {
+	var errs []string
+	if strings.TrimSpace(tunnel.LoadError) != "" {
+		errs = append(errs, tunnel.LoadError)
+	}
+	if tunnel.Disabled || (tunnel.Enabled != nil && !*tunnel.Enabled) {
+		if strings.TrimSpace(tunnel.Name) == "" {
+			errs = append(errs, fmt.Sprintf("tunnels[%d].name is required", index))
+		}
+		if len(errs) == 0 {
+			return ""
+		}
+		return strings.Join(errs, "; ")
+	}
+	effective := c.EffectiveTunnel(tunnel)
+	if effective.Name == "" {
+		errs = append(errs, fmt.Sprintf("tunnels[%d].name is required", index))
+	}
+	if effective.SSHKey == "" {
+		errs = append(errs, fmt.Sprintf("tunnels[%d].ssh_key is required", index))
+	}
+	if err := validatePort(effective.LocalPort, fmt.Sprintf("tunnels[%d].local_port", index)); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := validatePort(effective.RemotePort, fmt.Sprintf("tunnels[%d].remote_port", index)); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if !validHost(effective.LocalHost) {
+		errs = append(errs, fmt.Sprintf("tunnels[%d].local_host %q is not a valid hostname or IP address", index, effective.LocalHost))
+	}
+	if !validHost(effective.RemoteServer) {
+		errs = append(errs, fmt.Sprintf("tunnels[%d].remote_server %q is not a valid hostname or IP address", index, effective.RemoteServer))
+	}
+	if len(errs) == 0 {
+		return ""
+	}
+	return strings.Join(errs, "; ")
 }
 
 func (c Config) EffectiveWebListen() string {
@@ -525,23 +574,26 @@ func parse(input string) (Config, error) {
 			}
 			key, value, ok := splitKeyValue(line)
 			if !ok {
-				return Config{}, fmt.Errorf("invalid tunnel line: %q", line)
+				current.addLoadError(fmt.Sprintf("invalid tunnel line: %q", line))
+				continue
 			}
 			if err := assignTunnelField(current, key, value); err != nil {
-				return Config{}, err
+				current.addLoadError(err.Error())
 			}
 			continue
 		}
 
 		if current == nil {
-			return Config{}, fmt.Errorf("tunnel field without list item: %q", line)
+			current = &Tunnel{}
+			current.addLoadError(fmt.Sprintf("tunnel field without list item: %q", line))
 		}
 		key, value, ok := splitKeyValue(line)
 		if !ok {
-			return Config{}, fmt.Errorf("invalid tunnel line: %q", line)
+			current.addLoadError(fmt.Sprintf("invalid tunnel line: %q", line))
+			continue
 		}
 		if err := assignTunnelField(current, key, value); err != nil {
-			return Config{}, err
+			current.addLoadError(err.Error())
 		}
 	}
 
@@ -552,6 +604,18 @@ func parse(input string) (Config, error) {
 		cfg.Tunnels = append(cfg.Tunnels, *current)
 	}
 	return cfg, nil
+}
+
+func (t *Tunnel) addLoadError(msg string) {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return
+	}
+	if t.LoadError == "" {
+		t.LoadError = msg
+		return
+	}
+	t.LoadError += "; " + msg
 }
 
 func splitKeyValue(line string) (string, string, bool) {

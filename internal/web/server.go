@@ -229,7 +229,7 @@ func (s *Server) handleConfigPost(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "config", err.Error())
 		return
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		s.renderError(w, "config", err.Error())
 		return
 	}
@@ -261,7 +261,7 @@ func (s *Server) handleConfigRawPost(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "config_raw", err.Error())
 		return
 	}
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		s.renderError(w, "config_raw", err.Error())
 		return
 	}
@@ -305,7 +305,7 @@ func (s *Server) handleTunnelNewPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg.UpsertTunnel(tunnel)
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		s.renderError(w, "tunnel_form", err.Error())
 		return
 	}
@@ -369,7 +369,7 @@ func (s *Server) handleTunnelEditPost(w http.ResponseWriter, r *http.Request) {
 		_ = cfg.RemoveTunnel(oldName)
 	}
 	cfg.UpsertTunnel(tunnel)
-	if err := cfg.Validate(); err != nil {
+	if err := cfg.ValidateGlobals(); err != nil {
 		s.renderError(w, "tunnel_form", err.Error())
 		return
 	}
@@ -478,6 +478,7 @@ func (s *Server) setTunnelEnabled(w http.ResponseWriter, r *http.Request, enable
 func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, string) {
 	resp, err := control.Do(s.socketPath, control.Request{Command: "status"})
 	statuses := map[string]tunnels.Status{}
+	issues := map[string]string{}
 	daemonErr := ""
 	if err != nil {
 		daemonErr = "Daemon offline"
@@ -490,6 +491,9 @@ func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, string) {
 	} else if resp.Error != "" {
 		daemonErr = resp.Error
 	}
+	for _, issue := range cfg.TunnelIssues() {
+		issues[issue.Name] = issue.Error
+	}
 	rows := make([]TunnelRow, 0, len(cfg.Tunnels))
 	for _, tunnel := range cfg.Tunnels {
 		effective := cfg.EffectiveTunnel(tunnel)
@@ -501,6 +505,16 @@ func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, string) {
 		}
 		if st, ok := statuses[tunnel.Name]; ok {
 			row.Status = st
+			row.HasState = true
+		} else if issue, ok := issues[tunnel.Name]; ok {
+			row.Status = tunnels.Status{
+				Name:      tunnel.Name,
+				State:     tunnels.StateError,
+				LocalHost: effective.LocalHost,
+				LocalPort: effective.LocalPort,
+				Remote:    "",
+				Detail:    issue,
+			}
 			row.HasState = true
 		} else {
 			row.Status = tunnels.Status{

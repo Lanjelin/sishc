@@ -294,6 +294,9 @@ func TestSupervisorStopsDisabledTunnel(t *testing.T) {
 	logDir := dir + "/logs"
 
 	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", Disabled: true},
 		},
@@ -324,6 +327,9 @@ func TestSupervisorMarksDisabledTunnelDisabled(t *testing.T) {
 	logDir := dir + "/logs"
 
 	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", Disabled: true},
 		},
@@ -362,6 +368,9 @@ func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 	s := NewSupervisor(cfgPath, logDir, launcher)
 
 	enabled := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", SSHKey: "id_rsa", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
 		},
@@ -374,6 +383,9 @@ func TestSupervisorKeepsDisabledStateAfterProcessExit(t *testing.T) {
 	}
 
 	disabled := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", Disabled: true},
 		},
@@ -572,6 +584,9 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 	s.SetLogger(log.New(&buf, "", 0))
 
 	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", SSHKey: "id_rsa", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
 		},
@@ -620,6 +635,9 @@ func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 	logDir := dir + "/logs"
 
 	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", Disabled: true},
 		},
@@ -636,7 +654,8 @@ func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 		t.Fatalf("ReconcileNow() error = %v", err)
 	}
 
-	updated := config.Config{}
+	updated := cfg
+	updated.Tunnels = nil
 	if err := config.Save(cfgPath, updated); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -649,12 +668,69 @@ func TestSupervisorRemovesStatusForDeletedTunnel(t *testing.T) {
 	}
 }
 
+func TestSupervisorMarksInvalidTunnelAsError(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	raw := strings.Join([]string{
+		"ssh_key: id_rsa",
+		"remote_port: 2222",
+		"remote_server: example.com",
+		"tunnels:",
+		"  - name: good",
+		"    local_host: localhost",
+		"    local_port: 8080",
+		"    remote_port: 2222",
+		"    remote_server: example.com",
+		"  - name: broken",
+		"    local_host localhost",
+		"    local_port: 8081",
+		"    remote_port: 2222",
+		"    remote_server: example.com",
+		"",
+	}, "\n")
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 5678}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		if resolved.Name != "good" {
+			t.Fatalf("launcher called for invalid tunnel %q", resolved.Name)
+		}
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	st, ok := s.StatusFor("broken")
+	if !ok {
+		t.Fatal("StatusFor() missing invalid tunnel")
+	}
+	if st.State != StateError {
+		t.Fatalf("status state = %s, want %s", st.State, StateError)
+	}
+	if !strings.Contains(st.Detail, "invalid tunnel line") {
+		t.Fatalf("status detail = %q, want parse error", st.Detail)
+	}
+
+	proc.waitCh <- nil
+	time.Sleep(10 * time.Millisecond)
+}
+
 func TestSupervisorMarksStaleAndKillsOnStopTimeout(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := dir + "/config.yaml"
 	logDir := dir + "/logs"
 
 	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
 		Tunnels: []config.Tunnel{
 			{Name: "one", SSHKey: "id_rsa", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
 		},

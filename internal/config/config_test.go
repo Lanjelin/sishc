@@ -191,6 +191,40 @@ tunnels:
 	}
 }
 
+func TestLoadToleratesInvalidTunnel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	data := []byte(`
+ssh_key: ~/.ssh/id_rsa
+remote_port: 1433
+remote_server: example.com
+tunnels:
+  - name: good
+    local_host: localhost
+    local_port: 8080
+  - name: bad
+    local_host: localhost
+    local_port: nope
+    remote_port: 2222
+    remote_server: example.com
+`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Tunnels) != 2 {
+		t.Fatalf("Load() tunnels = %d, want 2", len(got.Tunnels))
+	}
+	if got.Tunnels[1].LoadError == "" {
+		t.Fatalf("Load() invalid tunnel LoadError = %q, want error", got.Tunnels[1].LoadError)
+	}
+}
+
 func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 	cfg := Config{
 		SSHKey:       "~/.ssh/id_rsa",

@@ -790,6 +790,11 @@
             const remote = row.querySelector('[data-field="remote"]');
             state.textContent = st.state || '-';
             state.className = 'badge ' + ((st.state === 'running') ? 'ok' : ((st.state === 'disabled') ? 'muted' : ((st.state === 'error' || st.state === 'stale') ? 'bad' : 'warn')));
+            if (st.state === 'error' && st.detail) {
+              state.title = st.detail;
+            } else {
+              state.removeAttribute('title');
+            }
             host.textContent = st.local_host || '-';
             port.textContent = st.local_port || '-';
             renderRemoteCell(remote, st.remote || '-');
