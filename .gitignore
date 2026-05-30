@@ -1,6 +1,7 @@
 .cache/
-.codex
+.codex*
 .codex/
 data/
 *.log
 AGENTS.md
+dist/
