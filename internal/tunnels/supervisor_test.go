@@ -107,6 +107,9 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	if st.State != StateStopped {
 		t.Fatalf("status state = %s, want %s", st.State, StateStopped)
 	}
+	if st.Remote != "" {
+		t.Fatalf("status remote = %q, want empty after stop", st.Remote)
+	}
 
 	content, err := os.ReadFile(daemonLogPath)
 	if err != nil {

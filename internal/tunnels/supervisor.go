@@ -237,6 +237,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		case !ok:
 			if issue, invalidTunnel := invalid[name]; invalidTunnel {
 				s.cancelReconnectLocked(name)
+				s.clearRemoteURLLocked(name)
 				fields := s.status[name]
 				s.lifecyclef("tunnel %s error: %s", name, issue)
 				_ = s.requestStopLocked(name, current, Status{
@@ -253,6 +254,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 				continue
 			}
 			s.cancelReconnectLocked(name)
+			s.clearRemoteURLLocked(name)
 			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
@@ -267,6 +269,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			})
 		case tunnel.Disabled:
 			s.cancelReconnectLocked(name)
+			s.clearRemoteURLLocked(name)
 			fields := s.status[name]
 			_ = s.requestStopLocked(name, current, Status{
 				Name:         name,
@@ -281,6 +284,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			})
 		case current.spec != tunnelSpec(tunnel):
 			s.cancelReconnectLocked(name)
+			s.clearRemoteURLLocked(name)
 			restartLater[name] = struct{}{}
 			s.lifecyclef("tunnel %s restarting", name)
 			fields := s.status[name]
@@ -302,6 +306,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		spec := tunnelSpec(tunnel)
 		if tunnel.Disabled {
 			s.cancelReconnectLocked(name)
+			s.clearRemoteURLLocked(name)
 			fields := s.status[name]
 			s.setStatusLocked(name, StateDisabled, "disabled in config", nil, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
 			continue
@@ -319,9 +324,11 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		}
 
 		s.lifecyclef("tunnel %s starting", name)
+		s.clearRemoteURLLocked(name)
 		tCtx, cancel := context.WithCancel(ctx)
 		logWriter, err := s.openTunnelLogWriter(name)
 		if err != nil {
+			s.clearRemoteURLLocked(name)
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 			s.lifecyclef("tunnel %s error: %v", name, err)
 			cancel()
@@ -335,6 +342,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		if err != nil {
 			_ = logWriter.Close()
 			cancel()
+			s.clearRemoteURLLocked(name)
 			s.setStatusLocked(name, StateError, err.Error(), nil, 0, tunnel.LocalHost, tunnel.LocalPort, "")
 			s.lifecyclef("tunnel %s error: %v", name, err)
 			s.scheduleReconnectLocked(name, s.status[name], nil, 0)
@@ -380,6 +388,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			continue
 		}
 		s.lifecyclef("tunnel %s error: %s", name, issue.Error)
+		s.clearRemoteURLLocked(name)
 		s.setStatusLocked(name, StateError, issue.Error, nil, 0, "", 0, "")
 	}
 
@@ -421,6 +430,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 			delete(s.remoteURLs, name)
 			s.remoteMu.Unlock()
 		} else {
+			s.clearRemoteURLLocked(name)
 			s.setStatusLocked(name, final.State, final.Detail, final.Command, final.LastExitCode, final.LocalHost, final.LocalPort, final.Remote)
 		}
 		_ = logFile.Close()
@@ -429,6 +439,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	}
 	delete(s.processes, name)
 	fields := s.status[name]
+	s.clearRemoteURLLocked(name)
 	s.setStatusLocked(name, state, detail, command, exitCode, fields.LocalHost, fields.LocalPort, fields.Remote)
 	switch state {
 	case StateStopped:
@@ -463,6 +474,7 @@ func (s *Supervisor) stopAll() {
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
 	s.stopping[name] = final
 	s.cancelReconnectLocked(name)
+	s.clearRemoteURLLocked(name)
 	s.setStatusLocked(name, StateStopping, "stopping", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
 	_ = current.process.Stop()
 	current.cancel()
@@ -475,6 +487,7 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 		s.lifecyclef("tunnel %s stopped", name)
 		return true
 	case <-time.After(stopTimeout):
+		s.clearRemoteURLLocked(name)
 		s.setStatusLocked(name, StateStale, "stale", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
 		s.lifecyclef("tunnel %s stale: stop timeout", name)
 		_ = current.process.Kill()
@@ -501,6 +514,12 @@ func (s *Supervisor) cancelReconnectLocked(name string) {
 		timer.Stop()
 		delete(s.reconnects, name)
 	}
+}
+
+func (s *Supervisor) clearRemoteURLLocked(name string) {
+	s.remoteMu.Lock()
+	defer s.remoteMu.Unlock()
+	delete(s.remoteURLs, name)
 }
 
 func (s *Supervisor) setStatusLocked(name string, state State, detail string, command []string, exitCode int, localHost string, localPort int, remote string) {
