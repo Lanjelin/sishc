@@ -159,10 +159,11 @@ func loadDaemonConfig(ctx context.Context, configPath string, nonInteractive boo
 			WebEnabled: true,
 			WebListen:  bootstrapWebListen,
 		}
-		fmt.Fprintf(errOut, "ERROR: Configuration file is empty. Please edit it at %s\n", configPath)
+		cliLine(errOut, "ERROR: Configuration file is empty. Please edit it at %s", configPath)
 		return cfg, nil
 	}
 	if os.IsNotExist(err) && isInteractiveReader(in) {
+		fmt.Fprintln(os.Stdout)
 		fmt.Fprintf(os.Stdout, "No valid config at %s.\n", configPath)
 		yes, err := promptYesNo(ctx, in, out, "Create one now?")
 		if err != nil {
@@ -174,7 +175,7 @@ func loadDaemonConfig(ctx context.Context, configPath string, nonInteractive boo
 		if err := runInit(ctx, []string{"--config", configPath}, in, out); err != nil {
 			return config.Config{}, err
 		}
-		fmt.Fprintf(out, "Starting daemon using %s\n", configPath)
+		cliLine(out, "Starting daemon using %s", configPath)
 		cfg, err = config.Load(configPath)
 		if err != nil {
 			return config.Config{}, err
@@ -223,7 +224,7 @@ func preflightDependencies() error {
 	if _, err := execLookPath("ssh"); err == nil {
 		return nil
 	}
-	fmt.Fprintln(os.Stderr, "missing dependency: ssh")
+	cliLine(os.Stderr, "missing dependency: ssh")
 	return fmt.Errorf("required tunnel dependency is missing")
 }
 
@@ -290,7 +291,7 @@ func runValidate(args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("config %q: %w", cfgPath, err)
 	}
-	fmt.Println("config ok")
+	cliLine(os.Stdout, "config ok")
 	return nil
 }
 
@@ -306,7 +307,7 @@ func runReconcile(args []string) error {
 	if !resp.OK {
 		return fmt.Errorf(resp.Error)
 	}
-	fmt.Println("reconciled")
+	cliLine(os.Stdout, "reconciled")
 	return nil
 }
 
@@ -1203,11 +1204,11 @@ func promptRequired(ctx context.Context, in io.Reader, out io.Writer, label, def
 func promptOptional(ctx context.Context, in io.Reader, out io.Writer, label, defaultValue, hint string) (string, error) {
 	switch {
 	case hint != "":
-		fmt.Fprintf(out, "%s [%s]: ", label, hint)
+		cliPrompt(out, "%s [%s]: ", label, hint)
 	case defaultValue != "":
-		fmt.Fprintf(out, "%s [%s]: ", label, defaultValue)
+		cliPrompt(out, "%s [%s]: ", label, defaultValue)
 	default:
-		fmt.Fprintf(out, "%s: ", label)
+		cliPrompt(out, "%s: ", label)
 	}
 	line, err := readLine(ctx, in)
 	if err != nil {
@@ -1276,7 +1277,7 @@ func isInteractive(f *os.File) bool {
 
 func promptYesNo(ctx context.Context, in io.Reader, out io.Writer, question string) (bool, error) {
 	for {
-		fmt.Fprintf(out, "%s [Y/n]: ", question)
+		cliPrompt(out, "%s [Y/n]: ", question)
 		answer, err := readLine(ctx, in)
 		if err != nil {
 			return false, err
@@ -1322,6 +1323,14 @@ func readLine(ctx context.Context, in io.Reader) (string, error) {
 
 func printUsage() {
 	fmt.Println(usageText())
+}
+
+func cliLine(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, "%s %s\n", time.Now().Format("2006/01/02 15:04:05"), fmt.Sprintf(format, args...))
+}
+
+func cliPrompt(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
 }
 
 func usageText() string {
