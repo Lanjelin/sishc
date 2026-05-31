@@ -298,6 +298,21 @@ func TestSupervisorReconnectsAfterLaunchError(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 }
 
+func TestSupervisorReconnectBackoffDoublesAndResets(t *testing.T) {
+	s := NewSupervisor("", "", nil)
+
+	if got := s.nextReconnectDelayLocked("one"); got != reconnectBaseDelay {
+		t.Fatalf("first delay = %s, want %s", got, reconnectBaseDelay)
+	}
+	if got := s.nextReconnectDelayLocked("one"); got != reconnectBaseDelay*2 {
+		t.Fatalf("second delay = %s, want %s", got, reconnectBaseDelay*2)
+	}
+	s.resetReconnectBackoffLocked("one")
+	if got := s.nextReconnectDelayLocked("one"); got != reconnectBaseDelay {
+		t.Fatalf("reset delay = %s, want %s", got, reconnectBaseDelay)
+	}
+}
+
 func TestBuildSSHCommandUsesKnownHostsOverride(t *testing.T) {
 	dir := t.TempDir()
 	knownHosts := filepath.Join(dir, "known_hosts")

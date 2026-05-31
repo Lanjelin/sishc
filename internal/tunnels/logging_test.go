@@ -52,6 +52,9 @@ func TestTunnelOutputWriterCapturesPrefixedAssignedURL(t *testing.T) {
 	input := "test1: HTTP: http://example.com\n" +
 		"test1: HTTPS: https://example.com\n" +
 		"test1: Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n" +
+		"test1: Connection closed by 192.227.212.121 port 1433\n" +
+		"test1: Connection to rofl.gn.gy closed by remote host.\n" +
+		"test1: Error #01: net/http: abort Handler\n" +
 		"test1: hello\n"
 
 	if _, err := w.Write([]byte(input)); err != nil {
@@ -61,6 +64,12 @@ func TestTunnelOutputWriterCapturesPrefixedAssignedURL(t *testing.T) {
 	got := buf.String()
 	if strings.Contains(got, "HTTP:") || strings.Contains(got, "HTTPS:") {
 		t.Fatalf("buffer contains startup chatter: %q", got)
+	}
+	if strings.Contains(got, "Connection closed by 192.227.212.121 port 1433") || strings.Contains(got, "abort Handler") {
+		t.Fatalf("buffer contains disconnect chatter: %q", got)
+	}
+	if !strings.Contains(got, "Connection to rofl.gn.gy closed by remote host.") {
+		t.Fatalf("buffer missing disconnect summary: %q", got)
 	}
 	if !strings.Contains(got, "test1: hello") {
 		t.Fatalf("buffer missing passthrough line: %q", got)

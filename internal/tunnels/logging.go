@@ -145,13 +145,14 @@ func (w *lineFilterWriter) Write(data []byte) (int, error) {
 		if line == "" {
 			continue
 		}
-		if shouldSkipLogLine(line) {
+		filtered, skip := filterTunnelLogLine(line)
+		if skip {
 			if url, secure, ok := parseAssignedURL(line); ok && w.onURL != nil {
 				w.onURL(url, secure)
 			}
 			continue
 		}
-		if _, err := fmt.Fprintln(w.w, line); err != nil {
+		if _, err := fmt.Fprintln(w.w, filtered); err != nil {
 			return 0, err
 		}
 		if url, secure, ok := parseAssignedURL(line); ok && w.onURL != nil {
@@ -220,9 +221,45 @@ func normalizeTunnelControlLine(line string) string {
 			return rest
 		case strings.HasPrefix(rest, "TCP: "):
 			return rest
+		case strings.HasPrefix(rest, "Connection closed by "):
+			return rest
+		case strings.HasPrefix(rest, "Connection to ") && strings.HasSuffix(rest, " closed by remote host."):
+			return rest
+		case rest == "Error #01: net/http: abort Handler":
+			return rest
 		}
 	}
 	return line
+}
+
+func filterTunnelLogLine(line string) (string, bool) {
+	line = normalizeTunnelControlLine(line)
+	switch {
+	case line == "":
+		return "", true
+	case strings.HasPrefix(line, "Warning: Permanently added "):
+		return "", true
+	case strings.HasPrefix(line, "Starting SSH Forwarding service for "):
+		return "", true
+	case line == "Press Ctrl-C to close the session.":
+		return "", true
+	case strings.HasPrefix(line, "The subdomain ") && strings.HasSuffix(line, " is unavailable. Assigning a random subdomain."):
+		return "", true
+	case strings.HasPrefix(line, "HTTPS: "):
+		return "", true
+	case strings.HasPrefix(line, "HTTP: "):
+		return "", true
+	case strings.HasPrefix(line, "TCP: "):
+		return "", true
+	case strings.HasPrefix(line, "Connection closed by "):
+		return "", true
+	case line == "Error #01: net/http: abort Handler":
+		return "", true
+	case strings.HasPrefix(line, "Connection to ") && strings.HasSuffix(line, " closed by remote host."):
+		return line, false
+	default:
+		return line, false
+	}
 }
 
 func stripANSI(s string) string {

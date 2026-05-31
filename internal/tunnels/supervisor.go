@@ -19,7 +19,9 @@ import (
 type State string
 
 const (
-	reconnectDelay          = 750 * time.Millisecond
+	reconnectBaseDelay      = 750 * time.Millisecond
+	reconnectMaxDelay       = 30 * time.Second
+	reconnectResetDelay     = 10 * time.Second
 	StateDisabled     State = "disabled"
 	StateStarting     State = "starting"
 	StateRunning      State = "running"
@@ -74,6 +76,8 @@ type Supervisor struct {
 	processes   map[string]trackedProcess
 	stopping    map[string]Status
 	reconnects  map[string]*time.Timer
+	backoffs    map[string]time.Duration
+	backoffResets map[string]*time.Timer
 	statusSubs  map[chan StatusEvent]struct{}
 	lastMod     time.Time
 }
@@ -101,6 +105,8 @@ func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 		processes:  make(map[string]trackedProcess),
 		stopping:   make(map[string]Status),
 		reconnects: make(map[string]*time.Timer),
+		backoffs:   make(map[string]time.Duration),
+		backoffResets: make(map[string]*time.Timer),
 		statusSubs: make(map[chan StatusEvent]struct{}),
 	}
 }
@@ -366,11 +372,12 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 		current, ok := s.processes[name]
 		if ok && current.spec == spec {
-			s.cancelReconnectLocked(name)
-			fields := s.status[name]
-			s.setStatusLocked(name, StateRunning, "running", current.command, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
-			continue
-		}
+		s.cancelReconnectLocked(name)
+		fields := s.status[name]
+		s.setStatusLocked(name, StateRunning, "running", current.command, 0, tunnel.LocalHost, tunnel.LocalPort, fields.Remote)
+		s.scheduleBackoffResetLocked(name)
+		continue
+	}
 		if _, pending := restartLater[name]; pending {
 			continue
 		}
@@ -411,6 +418,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		}
 		s.cancelReconnectLocked(name)
 		s.setStatusLocked(name, StateRunning, "running", command, 0, tunnel.LocalHost, tunnel.LocalPort, "")
+		s.scheduleBackoffResetLocked(name)
 		s.lifecyclef("tunnel %s started", name)
 		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
 	}
@@ -447,7 +455,7 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 
 	if len(restartLater) > 0 {
 		go func() {
-			time.Sleep(reconnectDelay)
+			time.Sleep(reconnectBaseDelay)
 			_ = s.ReconcileNow(context.Background())
 		}()
 	}
@@ -475,6 +483,7 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	defer s.mu.Unlock()
 	if final, ok := s.stopping[name]; ok {
 		s.cancelReconnectLocked(name)
+		s.cancelBackoffResetLocked(name)
 		delete(s.stopping, name)
 		delete(s.processes, name)
 		if final.Detail == "removed from config" {
@@ -497,8 +506,10 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	s.setStatusLocked(name, state, detail, command, exitCode, fields.LocalHost, fields.LocalPort, fields.Remote)
 	switch state {
 	case StateStopped:
+		s.cancelBackoffResetLocked(name)
 		s.lifecyclef("tunnel %s stopped", name)
 	case StateError:
+		s.cancelBackoffResetLocked(name)
 		s.lifecyclef("tunnel %s error: %s", name, detail)
 		s.scheduleReconnectLocked(name, fields, command, exitCode)
 	}
@@ -528,6 +539,7 @@ func (s *Supervisor) stopAll() {
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
 	s.stopping[name] = final
 	s.cancelReconnectLocked(name)
+	s.cancelBackoffResetLocked(name)
 	s.clearRemoteURLLocked(name)
 	s.setStatusLocked(name, StateStopping, "stopping", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
 	_ = current.process.Stop()
@@ -553,9 +565,10 @@ func (s *Supervisor) scheduleReconnectLocked(name string, current Status, comman
 	if timer := s.reconnects[name]; timer != nil {
 		return
 	}
-	s.setStatusLocked(name, StateReconnecting, "restarting after exit", command, exitCode, current.LocalHost, current.LocalPort, current.Remote)
-	s.lifecyclef("tunnel %s reconnecting", name)
-	s.reconnects[name] = time.AfterFunc(reconnectDelay, func() {
+	delay := s.nextReconnectDelayLocked(name)
+	s.setStatusLocked(name, StateReconnecting, fmt.Sprintf("restarting in %s", delay.Round(time.Millisecond)), command, exitCode, current.LocalHost, current.LocalPort, current.Remote)
+	s.lifecyclef("tunnel %s reconnecting in %s", name, delay.Round(time.Millisecond))
+	s.reconnects[name] = time.AfterFunc(delay, func() {
 		s.mu.Lock()
 		delete(s.reconnects, name)
 		s.mu.Unlock()
@@ -567,6 +580,46 @@ func (s *Supervisor) cancelReconnectLocked(name string) {
 	if timer := s.reconnects[name]; timer != nil {
 		timer.Stop()
 		delete(s.reconnects, name)
+	}
+	s.cancelBackoffResetLocked(name)
+}
+
+func (s *Supervisor) nextReconnectDelayLocked(name string) time.Duration {
+	delay := s.backoffs[name]
+	if delay <= 0 {
+		delay = reconnectBaseDelay
+	}
+	if delay > reconnectMaxDelay {
+		delay = reconnectMaxDelay
+	}
+	next := delay * 2
+	if next > reconnectMaxDelay {
+		next = reconnectMaxDelay
+	}
+	s.backoffs[name] = next
+	return delay
+}
+
+func (s *Supervisor) resetReconnectBackoffLocked(name string) {
+	delete(s.backoffs, name)
+}
+
+func (s *Supervisor) scheduleBackoffResetLocked(name string) {
+	if timer := s.backoffResets[name]; timer != nil {
+		timer.Stop()
+	}
+	s.backoffResets[name] = time.AfterFunc(reconnectResetDelay, func() {
+		s.mu.Lock()
+		delete(s.backoffResets, name)
+		s.resetReconnectBackoffLocked(name)
+		s.mu.Unlock()
+	})
+}
+
+func (s *Supervisor) cancelBackoffResetLocked(name string) {
+	if timer := s.backoffResets[name]; timer != nil {
+		timer.Stop()
+		delete(s.backoffResets, name)
 	}
 }
 
@@ -739,30 +792,6 @@ func expandSSHKey(value string) string {
 		return value
 	}
 	return filepath.Join(home, ".ssh", value)
-}
-
-func shouldSkipLogLine(line string) bool {
-	line = normalizeTunnelControlLine(line)
-	switch {
-	case line == "":
-		return true
-	case strings.HasPrefix(line, "Warning: Permanently added "):
-		return true
-	case strings.HasPrefix(line, "Starting SSH Forwarding service for "):
-		return true
-	case line == "Press Ctrl-C to close the session.":
-		return true
-	case strings.HasPrefix(line, "The subdomain ") && strings.HasSuffix(line, " is unavailable. Assigning a random subdomain."):
-		return true
-	case strings.HasPrefix(line, "HTTPS: "):
-		return true
-	case strings.HasPrefix(line, "HTTP: "):
-		return true
-	case strings.HasPrefix(line, "TCP: "):
-		return true
-	default:
-		return false
-	}
 }
 
 func (s *Supervisor) StatusFor(name string) (Status, bool) {
