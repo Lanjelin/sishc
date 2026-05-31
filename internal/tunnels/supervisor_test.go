@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -52,10 +53,10 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 		LocalProtocol: "http",
 		LocalHost:     "localhost",
 		LocalPort:     8080,
-		RemotePort:    2222,
-		RemoteServer:  "example.com",
+		RemotePort:    tunnelRemotePort,
+		RemoteServer:  tunnelRemoteServer,
 		Tunnels: []config.Tunnel{
-			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: tunnelRemotePort, RemoteServer: tunnelRemoteServer},
 		},
 	}
 	if err := config.Save(cfgPath, cfg); err != nil {
@@ -66,10 +67,10 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launched = append(launched, resolved.RemoteForward())
-		_, _ = logWriter.Write([]byte("Warning: Permanently added '[lol.gn.gy]:1433' (ED25519) to the list of known hosts.\n"))
+		_, _ = logWriter.Write([]byte(fmt.Sprintf("Warning: Permanently added '[%s]:%d' (ED25519) to the list of known hosts.\n", tunnelSubdomain, tunnelRemotePort)))
 		_, _ = logWriter.Write([]byte("Starting SSH Forwarding service for http:80. Forwarded connections can be accessed via the following methods:\n"))
 		_, _ = logWriter.Write([]byte("Press Ctrl-C to close the session.\n"))
-		_, _ = logWriter.Write([]byte("The subdomain localhost.gn.gy is unavailable. Assigning a random subdomain.\n"))
+		_, _ = logWriter.Write([]byte("The subdomain " + tunnelSubdomain + " is unavailable. Assigning a random subdomain.\n"))
 		_, _ = logWriter.Write([]byte("HTTPS: https://example.com\n"))
 		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		_, _ = logWriter.Write([]byte("connect_to localhost port 8060: failed.\n"))
@@ -149,7 +150,7 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	if strings.Contains(logText, "Press Ctrl-C to close the session.") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
-	if strings.Contains(logText, "The subdomain localhost.gn.gy is unavailable") {
+	if strings.Contains(logText, "The subdomain "+tunnelSubdomain+" is unavailable") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
 	if !strings.Contains(logText, "hello") {

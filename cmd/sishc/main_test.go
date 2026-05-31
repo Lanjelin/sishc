@@ -10,6 +10,13 @@ import (
 	"testing"
 
 	"github.com/lanjelin/sishc/internal/config"
+	"github.com/lanjelin/sishc/internal/testvars"
+)
+
+var (
+	testRemoteServer = testvars.String("SISHC_TEST_REMOTE_SERVER", "example.test")
+	testRemotePort   = testvars.Int("SISHC_TEST_REMOTE_PORT", 2222)
+	testSSHKey       = testvars.String("SISHC_TEST_SSH_KEY", "~/.ssh/id_rsa")
 )
 
 func TestRunAddPersistsExplicitRemotePortAndLeavesOtherFieldsSparse(t *testing.T) {
@@ -17,9 +24,9 @@ func TestRunAddPersistsExplicitRemotePortAndLeavesOtherFieldsSparse(t *testing.T
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	if err := config.Save(path, initial); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -69,11 +76,11 @@ func TestRunAddUsesGlobalLocalEndpointWhenOmitted(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalHost:    "127.0.0.1",
 		LocalPort:    8088,
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	if err := config.Save(path, initial); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -98,10 +105,10 @@ func TestRunAddUsesGlobalPortWhenOnlyHostSpecified(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalPort:    8088,
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	if err := config.Save(path, initial); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -126,10 +133,10 @@ func TestRunAddUsesGlobalHostWhenOnlyPortSpecified(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalHost:    "127.0.0.1",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	if err := config.Save(path, initial); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -154,9 +161,9 @@ func TestRunAddLeavesRemotePortForGlobalFallbackWhenOmitted(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	if err := config.Save(path, initial); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -191,9 +198,9 @@ func TestRunAddFailsIfTunnelAlreadyExists(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 		Tunnels: []config.Tunnel{
 			{Name: "test1"},
 		},
@@ -220,9 +227,9 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 		Tunnels: []config.Tunnel{
 			{
 				Name:         "old",
@@ -230,7 +237,7 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 				LocalHost:    "localhost",
 				LocalPort:    6080,
 				RemotePort:   1555,
-				RemoteServer: "old.example.com",
+				RemoteServer: "old.example.test",
 				Enabled:      boolPtr(true),
 			},
 		},
@@ -263,8 +270,8 @@ func TestRunUpdateRenamesAndPreservesOmittedFields(t *testing.T) {
 	if tunnel.RemotePort != 1666 {
 		t.Fatalf("tunnel.RemotePort = %d, want 1666", tunnel.RemotePort)
 	}
-	if tunnel.RemoteServer != "old.example.com" {
-		t.Fatalf("tunnel.RemoteServer = %q, want old.example.com", tunnel.RemoteServer)
+	if tunnel.RemoteServer != "old.example.test" {
+		t.Fatalf("tunnel.RemoteServer = %q, want old.example.test", tunnel.RemoteServer)
 	}
 	if tunnel.Enabled == nil || !*tunnel.Enabled {
 		t.Fatalf("tunnel.Enabled = %+v, want true", tunnel.Enabled)
@@ -276,18 +283,18 @@ func TestRunUpdateKeepsExistingLocalEndpointWhenOmitted(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalHost:    "127.0.0.1",
 		LocalPort:    8088,
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 		Tunnels: []config.Tunnel{
 			{
 				Name:         "old",
 				LocalHost:    "localhost",
 				LocalPort:    6080,
 				RemotePort:   1555,
-				RemoteServer: "old.example.com",
+				RemoteServer: "old.example.test",
 				Enabled:      boolPtr(true),
 			},
 		},
@@ -315,17 +322,17 @@ func TestRunUpdateUsesExistingHostWhenOnlyPortSpecified(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalHost:    "127.0.0.1",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 		Tunnels: []config.Tunnel{
 			{
 				Name:         "old",
 				LocalHost:    "localhost",
 				LocalPort:    6080,
 				RemotePort:   1555,
-				RemoteServer: "old.example.com",
+				RemoteServer: "old.example.test",
 				Enabled:      boolPtr(true),
 			},
 		},
@@ -353,17 +360,17 @@ func TestRunUpdateUsesExistingPortWhenOnlyHostSpecified(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	initial := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		LocalPort:    8088,
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 		Tunnels: []config.Tunnel{
 			{
 				Name:         "old",
 				LocalHost:    "localhost",
 				LocalPort:    6080,
 				RemotePort:   1555,
-				RemoteServer: "old.example.com",
+				RemoteServer: "old.example.test",
 				Enabled:      boolPtr(true),
 			},
 		},

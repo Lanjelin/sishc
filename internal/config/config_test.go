@@ -1,10 +1,19 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lanjelin/sishc/internal/testvars"
+)
+
+var (
+	testRemoteServer = testvars.String("SISHC_TEST_REMOTE_SERVER", "example.test")
+	testRemotePort   = testvars.Int("SISHC_TEST_REMOTE_PORT", 2222)
+	testSSHKey       = testvars.String("SISHC_TEST_SSH_KEY", "~/.ssh/id_rsa")
 )
 
 func TestSaveAndLoadRoundTrip(t *testing.T) {
@@ -12,7 +21,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(dir, "config.yaml")
 
 	want := Config{
-		SSHKey:        "~/.ssh/id_rsa",
+		SSHKey:        testSSHKey,
 		LocalProtocol: "http",
 		LocalHost:     "localhost",
 		LocalPort:     8080,
@@ -81,8 +90,8 @@ func TestValidateRequiredGlobalsRejectsMissingValues(t *testing.T) {
 
 func TestValidateRequiredGlobalsAcceptsValidValues(t *testing.T) {
 	cfg := Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
 		RemoteServer: "example.com",
 	}
 
@@ -195,10 +204,10 @@ func TestLoadToleratesInvalidTunnel(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 
-	data := []byte(`
-ssh_key: ~/.ssh/id_rsa
-remote_port: 1433
-remote_server: example.com
+	data := []byte(fmt.Sprintf(`
+ssh_key: %s
+remote_port: %d
+remote_server: %s
 tunnels:
   - name: good
     local_host: localhost
@@ -208,7 +217,7 @@ tunnels:
     local_port: nope
     remote_port: 2222
     remote_server: example.com
-`)
+`, testSSHKey, testRemotePort, testRemoteServer))
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
@@ -227,7 +236,7 @@ tunnels:
 
 func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 	cfg := Config{
-		SSHKey:       "~/.ssh/id_rsa",
+		SSHKey:       testSSHKey,
 		RemotePort:   2222,
 		RemoteServer: "example.com",
 	}
@@ -236,7 +245,7 @@ func TestBuildTunnelUsesGlobalsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTunnel() error = %v", err)
 	}
-	if tunnel.SSHKey != "~/.ssh/id_rsa" {
+	if tunnel.SSHKey != testSSHKey {
 		t.Fatalf("BuildTunnel() SSHKey = %q", tunnel.SSHKey)
 	}
 	if tunnel.RemotePort != 2222 {
@@ -404,9 +413,9 @@ func TestRemoteForwardOmitsNameForOneoff(t *testing.T) {
 
 func TestBuildOneOffTunnelAllowsEmptyName(t *testing.T) {
 	cfg := Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
 	}
 	tunnel, err := BuildOneOffTunnelFromPort("6080", cfg, TunnelBuildOptions{})
 	if err != nil {

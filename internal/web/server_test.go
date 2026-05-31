@@ -1,16 +1,29 @@
 package web
 
 import (
+	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/lanjelin/sishc/internal/config"
+	"github.com/lanjelin/sishc/internal/testvars"
+	"github.com/lanjelin/sishc/internal/tunnels"
+)
+
+var (
+	testWebHost    = testvars.String("SISHC_TEST_WEB_HOST", "example.test")
+	testPublicIP   = testvars.String("SISHC_TEST_PUBLIC_IP", "198.51.100.10")
+	testRemoteHost = testvars.String("SISHC_TEST_REMOTE_SERVER", "example.test")
+	testRemotePort = testvars.Int("SISHC_TEST_REMOTE_PORT", 2222)
+	testSSHKey     = testvars.String("SISHC_TEST_SSH_KEY", "~/.ssh/id_rsa")
 )
 
 func TestRenderLogLinePreservesANSIFormatting(t *testing.T) {
-	line := "2026/05/13 - 11:22:44 | sishcgo.gn.gy |\x1b[97;42m 200 \x1b[0m|  112.948676ms |   148.123.47.18 |\x1b[97;44m GET     \x1b[0m /static/styles.css"
+	line := "2026/05/13 - 11:22:44 | " + testWebHost + " |\x1b[97;42m 200 \x1b[0m|  112.948676ms |   " + testPublicIP + " |\x1b[97;44m GET     \x1b[0m /static/styles.css"
 
 	rendered := string(renderLogLine(line))
 	if strings.Contains(rendered, "\x1b[") {
@@ -66,11 +79,83 @@ func TestDashboardRowsReportsConfigValidationError(t *testing.T) {
 	}
 }
 
+func TestHandleStatusStreamWritesEvents(t *testing.T) {
+	dir := t.TempDir()
+	socketPath := filepath.Join(dir, "status.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Skipf("cannot bind unix socket: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		var req struct {
+			Command string `json:"command"`
+		}
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			t.Errorf("Decode() error = %v", err)
+			return
+		}
+		if req.Command != "status-stream" {
+			t.Errorf("command = %q, want status-stream", req.Command)
+			return
+		}
+
+		enc := json.NewEncoder(conn)
+		if err := enc.Encode(tunnels.StatusEvent{
+			Type: "snapshot",
+			Status: tunnels.Status{
+				Name:  "one",
+				State: tunnels.StateRunning,
+			},
+		}); err != nil {
+			t.Errorf("Encode(snapshot) error = %v", err)
+			return
+		}
+		if err := enc.Encode(tunnels.StatusEvent{
+			Type: "status",
+			Status: tunnels.Status{
+				Name:   "one",
+				State:  tunnels.StateStopped,
+				Remote: "",
+			},
+		}); err != nil {
+			t.Errorf("Encode(status) error = %v", err)
+			return
+		}
+	}()
+
+	s := New("", "", socketPath, "/")
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/status/stream", nil)
+	s.handleStatusStream(rr, req)
+	<-done
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "event: snapshot") {
+		t.Fatalf("stream missing snapshot event: %q", body)
+	}
+	if !strings.Contains(body, "event: status") {
+		t.Fatalf("stream missing status event: %q", body)
+	}
+	if !strings.Contains(body, `"name":"one"`) {
+		t.Fatalf("stream missing status payload: %q", body)
+	}
+}
+
 func TestBuildTunnelFromFormKeepsAddSparse(t *testing.T) {
 	cfg := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteHost,
 		LocalHost:    "127.0.0.1",
 		LocalPort:    6080,
 	}
@@ -97,15 +182,15 @@ func TestBuildTunnelFromFormKeepsAddSparse(t *testing.T) {
 
 func TestBuildTunnelFromFormClearsEditFields(t *testing.T) {
 	cfg := config.Config{
-		SSHKey:       "~/.ssh/id_rsa",
-		RemotePort:   1433,
-		RemoteServer: "rofl.gn.gy",
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteHost,
 		LocalHost:    "127.0.0.1",
 		LocalPort:    6080,
 	}
 	existing := config.Tunnel{
 		Name:          "test22",
-		SSHKey:        "~/.ssh/id_rsa2",
+		SSHKey:        testSSHKey + "2",
 		LocalProtocol: "https",
 		LocalHost:     "example_host",
 		LocalPort:     3000,
