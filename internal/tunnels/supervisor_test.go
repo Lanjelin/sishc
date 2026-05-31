@@ -86,15 +86,24 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	if len(launched) != 1 {
 		t.Fatalf("launcher calls = %d, want 1", len(launched))
 	}
-	st, ok := s.StatusFor("one")
-	if !ok {
-		t.Fatal("StatusFor() missing tunnel")
-	}
-	if st.State != StateRunning {
-		t.Fatalf("status state = %s, want %s", st.State, StateRunning)
-	}
-	if st.Remote != "https://example.com" {
-		t.Fatalf("status remote = %q, want https://example.com", st.Remote)
+	var st Status
+	var ok bool
+	deadline := time.Now().Add(time.Second)
+	for {
+		st, ok = s.StatusFor("one")
+		if !ok {
+			t.Fatal("StatusFor() missing tunnel")
+		}
+		if st.State == StateRunning {
+			if st.Remote != "https://example.com" {
+				t.Fatalf("status remote = %q, want https://example.com", st.Remote)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	proc.waitCh <- nil
@@ -255,6 +264,7 @@ func TestSupervisorReconnectsAfterLaunchError(t *testing.T) {
 		if launchCount == 1 {
 			return nil, nil, errors.New("temporary ssh failure")
 		}
+		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
@@ -286,12 +296,19 @@ func TestSupervisorReconnectsAfterLaunchError(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	st, ok := s.StatusFor("one")
-	if !ok {
-		t.Fatal("StatusFor() missing tunnel")
-	}
-	if st.State != StateRunning {
-		t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		st, ok := s.StatusFor("one")
+		if !ok {
+			t.Fatal("StatusFor() missing tunnel")
+		}
+		if st.State == StateRunning {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status state = %s, want %s", st.State, StateRunning)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	proc.waitCh <- nil
@@ -311,6 +328,72 @@ func TestSupervisorReconnectBackoffDoublesAndResets(t *testing.T) {
 	if got := s.nextReconnectDelayLocked("one"); got != reconnectBaseDelay {
 		t.Fatalf("reset delay = %s, want %s", got, reconnectBaseDelay)
 	}
+}
+
+func TestSupervisorWaitsForAssignedEndpointBeforeRunning(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := dir + "/config.yaml"
+	logDir := dir + "/logs"
+
+	oldStartupTimeout := startupTimeout
+	startupTimeout = 20 * time.Millisecond
+	t.Cleanup(func() {
+		startupTimeout = oldStartupTimeout
+	})
+
+	cfg := config.Config{
+		SSHKey:       "id_rsa",
+		RemotePort:   2222,
+		RemoteServer: "example.com",
+		Tunnels: []config.Tunnel{
+			{Name: "one", LocalHost: "localhost", LocalPort: 8080, RemotePort: 2222, RemoteServer: "example.com"},
+		},
+	}
+	if err := config.Save(cfgPath, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 5678}
+	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		return proc, []string{"ssh", resolved.RemoteForward()}, nil
+	}
+
+	s := NewSupervisor(cfgPath, logDir, launcher)
+	if err := s.ReconcileNow(context.Background()); err != nil {
+		t.Fatalf("ReconcileNow() error = %v", err)
+	}
+
+	st, ok := s.StatusFor("one")
+	if !ok {
+		t.Fatal("StatusFor() missing tunnel")
+	}
+	if st.State != StateStarting {
+		t.Fatalf("status state = %s, want %s", st.State, StateStarting)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		st, ok = s.StatusFor("one")
+		if !ok {
+			t.Fatal("StatusFor() missing tunnel while waiting for timeout")
+		}
+		if st.State == StateError {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status state = %s, want %s", st.State, StateError)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st.Detail != startupTimeoutDetail {
+		t.Fatalf("status detail = %q, want %q", st.Detail, startupTimeoutDetail)
+	}
+	if proc.kills == 0 {
+		t.Fatal("expected process to be killed after startup timeout")
+	}
+
+	proc.waitCh <- nil
+	time.Sleep(20 * time.Millisecond)
 }
 
 func TestBuildSSHCommandUsesKnownHostsOverride(t *testing.T) {
@@ -479,8 +562,10 @@ func TestSupervisorRestartsTunnelWhenSpecChanges(t *testing.T) {
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launchCount++
 		if launchCount == 1 {
+			_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 			return proc1, []string{"ssh", resolved.RemoteForward()}, nil
 		}
+		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		return proc2, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
@@ -551,8 +636,10 @@ func TestSupervisorStopsOldTunnelWhenRenamed(t *testing.T) {
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
 		launchCount++
 		if launchCount == 1 {
+			_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 			return proc1, []string{"ssh", resolved.RemoteForward()}, nil
 		}
+		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		return proc2, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
@@ -635,6 +722,7 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 
 	proc := &fakeProcess{waitCh: make(chan error, 1), pid: 1234}
 	launcher := func(ctx context.Context, tunnel config.Tunnel, resolved config.Tunnel, logWriter io.Writer) (Process, []string, error) {
+		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
 
@@ -657,6 +745,18 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 		t.Fatalf("ReconcileNow() error = %v", err)
 	}
 
+	deadline := time.Now().Add(time.Second)
+	for {
+		got := buf.String()
+		if strings.Contains(got, "tunnel one started") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("logger missing started line: %q", got)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
 	done := make(chan struct{})
 	go func() {
 		s.Shutdown()
@@ -664,7 +764,7 @@ func TestSupervisorLogsLifecycleToLogger(t *testing.T) {
 	}()
 	proc.waitCh <- nil
 	<-done
-	deadline := time.Now().Add(time.Second)
+	deadline = time.Now().Add(time.Second)
 	for {
 		got := buf.String()
 		if strings.Contains(got, "tunnel one stopped") {

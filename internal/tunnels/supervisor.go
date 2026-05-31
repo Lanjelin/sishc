@@ -33,6 +33,7 @@ const (
 )
 
 var stopTimeout = 5 * time.Second
+var startupTimeout = 10 * time.Second
 
 type Status struct {
 	Name         string    `json:"name"`
@@ -78,6 +79,8 @@ type Supervisor struct {
 	reconnects  map[string]*time.Timer
 	backoffs    map[string]time.Duration
 	backoffResets map[string]*time.Timer
+	startupTimers map[string]*time.Timer
+	shuttingDown bool
 	statusSubs  map[chan StatusEvent]struct{}
 	lastMod     time.Time
 }
@@ -107,6 +110,7 @@ func NewSupervisor(cfgPath, logDir string, launch Launcher) *Supervisor {
 		reconnects: make(map[string]*time.Timer),
 		backoffs:   make(map[string]time.Duration),
 		backoffResets: make(map[string]*time.Timer),
+		startupTimers: make(map[string]*time.Timer),
 		statusSubs: make(map[chan StatusEvent]struct{}),
 	}
 }
@@ -382,7 +386,6 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			continue
 		}
 
-		s.lifecyclef("tunnel %s starting", name)
 		s.clearRemoteURLLocked(name)
 		tCtx, cancel := context.WithCancel(ctx)
 		logWriter, err := s.openTunnelLogWriter(name)
@@ -417,9 +420,15 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 			done:    make(chan struct{}),
 		}
 		s.cancelReconnectLocked(name)
-		s.setStatusLocked(name, StateRunning, "running", command, 0, tunnel.LocalHost, tunnel.LocalPort, "")
-		s.scheduleBackoffResetLocked(name)
-		s.lifecyclef("tunnel %s started", name)
+		status := s.status[name]
+		if status.State == StateRunning {
+			s.setStatusLocked(name, StateRunning, "running", command, 0, tunnel.LocalHost, tunnel.LocalPort, status.Remote)
+			s.scheduleBackoffResetLocked(name)
+		} else {
+			s.setStatusLocked(name, StateStarting, "waiting for remote endpoint", command, 0, tunnel.LocalHost, tunnel.LocalPort, status.Remote)
+			s.scheduleStartupTimeoutLocked(name, command, tunnel.LocalHost, tunnel.LocalPort)
+		}
+		s.lifecyclef("tunnel %s starting", name)
 		go s.watchProcess(name, process, cancel, command, logWriter, s.processes[name].done)
 	}
 
@@ -481,9 +490,22 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.shuttingDown {
+		delete(s.processes, name)
+		delete(s.stopping, name)
+		s.cancelReconnectLocked(name)
+		s.cancelBackoffResetLocked(name)
+		s.cancelStartupTimeoutLocked(name)
+		s.clearRemoteURLLocked(name)
+		s.setStatusLocked(name, StateStopped, "stopped", command, exitCode, "", 0, "")
+		_ = logFile.Close()
+		cancel()
+		return
+	}
 	if final, ok := s.stopping[name]; ok {
 		s.cancelReconnectLocked(name)
 		s.cancelBackoffResetLocked(name)
+		s.cancelStartupTimeoutLocked(name)
 		delete(s.stopping, name)
 		delete(s.processes, name)
 		if final.Detail == "removed from config" {
@@ -502,15 +524,27 @@ func (s *Supervisor) watchProcess(name string, process Process, cancel context.C
 	}
 	delete(s.processes, name)
 	fields := s.status[name]
+	s.cancelStartupTimeoutLocked(name)
 	s.clearRemoteURLLocked(name)
-	s.setStatusLocked(name, state, detail, command, exitCode, fields.LocalHost, fields.LocalPort, fields.Remote)
+	if fields.State == StateError && fields.Detail == startupTimeoutDetail {
+		state = StateError
+		detail = fields.Detail
+		exitCode = fields.LastExitCode
+	}
+	remote := fields.Remote
+	if state == StateStopped {
+		remote = ""
+	}
+	s.setStatusLocked(name, state, detail, command, exitCode, fields.LocalHost, fields.LocalPort, remote)
 	switch state {
 	case StateStopped:
 		s.cancelBackoffResetLocked(name)
 		s.lifecyclef("tunnel %s stopped", name)
 	case StateError:
 		s.cancelBackoffResetLocked(name)
-		s.lifecyclef("tunnel %s error: %s", name, detail)
+		if detail != startupTimeoutDetail {
+			s.lifecyclef("tunnel %s error: %s", name, detail)
+		}
 		s.scheduleReconnectLocked(name, fields, command, exitCode)
 	}
 	_ = logFile.Close()
@@ -537,11 +571,14 @@ func (s *Supervisor) stopAll() {
 }
 
 func (s *Supervisor) requestStopLocked(name string, current trackedProcess, final Status) bool {
+	currentRemote := final.Remote
+	final.Remote = ""
 	s.stopping[name] = final
 	s.cancelReconnectLocked(name)
 	s.cancelBackoffResetLocked(name)
+	s.cancelStartupTimeoutLocked(name)
 	s.clearRemoteURLLocked(name)
-	s.setStatusLocked(name, StateStopping, "stopping", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, final.Remote)
+	s.setStatusLocked(name, StateStopping, "stopping", append([]string(nil), current.command...), 0, final.LocalHost, final.LocalPort, currentRemote)
 	_ = current.process.Stop()
 	current.cancel()
 	delete(s.processes, name)
@@ -562,6 +599,9 @@ func (s *Supervisor) requestStopLocked(name string, current trackedProcess, fina
 }
 
 func (s *Supervisor) scheduleReconnectLocked(name string, current Status, command []string, exitCode int) {
+	if s.shuttingDown {
+		return
+	}
 	if timer := s.reconnects[name]; timer != nil {
 		return
 	}
@@ -620,6 +660,42 @@ func (s *Supervisor) cancelBackoffResetLocked(name string) {
 	if timer := s.backoffResets[name]; timer != nil {
 		timer.Stop()
 		delete(s.backoffResets, name)
+	}
+}
+
+const startupTimeoutDetail = "timed out waiting for assigned remote endpoint"
+
+func (s *Supervisor) scheduleStartupTimeoutLocked(name string, command []string, localHost string, localPort int) {
+	if timer := s.startupTimers[name]; timer != nil {
+		timer.Stop()
+	}
+	s.startupTimers[name] = time.AfterFunc(startupTimeout, func() {
+		s.mu.Lock()
+		current, ok := s.processes[name]
+		if !ok {
+			s.cancelStartupTimeoutLocked(name)
+			s.mu.Unlock()
+			return
+		}
+		st, ok := s.status[name]
+		if !ok || st.State != StateStarting {
+			s.cancelStartupTimeoutLocked(name)
+			s.mu.Unlock()
+			return
+		}
+		s.cancelStartupTimeoutLocked(name)
+		s.clearRemoteURLLocked(name)
+		s.setStatusLocked(name, StateError, startupTimeoutDetail, command, 0, localHost, localPort, "")
+		s.lifecyclef("tunnel %s error: %s", name, startupTimeoutDetail)
+		s.mu.Unlock()
+		_ = current.process.Kill()
+	})
+}
+
+func (s *Supervisor) cancelStartupTimeoutLocked(name string) {
+	if timer := s.startupTimers[name]; timer != nil {
+		timer.Stop()
+		delete(s.startupTimers, name)
 	}
 }
 
@@ -820,6 +896,9 @@ func (s *Supervisor) ReconcileNow(ctx context.Context) error {
 }
 
 func (s *Supervisor) Shutdown() {
+	s.mu.Lock()
+	s.shuttingDown = true
+	s.mu.Unlock()
 	s.stopAll()
 }
 
@@ -861,13 +940,28 @@ func (s *Supervisor) recordAssignedURL(name, url string, secure bool) {
 		s.remoteURLs[name] = url
 	}
 	s.remoteMu.Unlock()
-	go s.publishStatus(name)
+	go s.applyAssignedURL(name, url)
 }
 
-func (s *Supervisor) publishStatus(name string) {
+func (s *Supervisor) applyAssignedURL(name, url string) {
 	s.mu.Lock()
-	s.broadcastStatusLocked(name)
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	st, ok := s.status[name]
+	if !ok {
+		return
+	}
+	if st.State == StateStarting {
+		s.cancelStartupTimeoutLocked(name)
+		s.setStatusLocked(name, StateRunning, "running", st.Command, st.LastExitCode, st.LocalHost, st.LocalPort, url)
+		s.scheduleBackoffResetLocked(name)
+		s.lifecyclef("tunnel %s started", name)
+		return
+	}
+	if st.State == StateRunning {
+		s.broadcastStatusLocked(name)
+		return
+	}
+	s.clearRemoteURLLocked(name)
 }
 
 func (s *Supervisor) visibleTunnelNames() map[string]struct{} {
