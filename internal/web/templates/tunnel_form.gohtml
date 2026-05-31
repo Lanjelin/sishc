@@ -26,7 +26,7 @@
       <div class="kv-row">
         <label for="local_protocol" data-i18n="tunnel.local_protocol">Local protocol</label>
         <select id="local_protocol" name="local_protocol">
-          <option value="" {{ selected .Tunnel.LocalProtocol "" }}>Follow global</option>
+          <option value="" {{ selected .Tunnel.LocalProtocol "" }}>Follow global ({{ protocolLabel .Config.LocalProtocol }})</option>
           <option value="http" {{ selected .Tunnel.LocalProtocol "http" }}>http</option>
           <option value="https" {{ selected .Tunnel.LocalProtocol "https" }}>https</option>
           <option value="tcp" {{ selected .Tunnel.LocalProtocol "tcp" }}>tcp</option>
