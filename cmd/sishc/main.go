@@ -27,6 +27,8 @@ import (
 	sishweb "github.com/lanjelin/sishc/internal/web"
 )
 
+const bootstrapWebListen = "0.0.0.0:5000"
+
 func main() {
 	args := os.Args[1:]
 	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
@@ -93,35 +95,21 @@ func main() {
 }
 
 func runDaemon(ctx context.Context, args []string) error {
-	_, paths, err := parsePaths(args)
+	nonInteractive, paths, err := parseDaemonArgs(args)
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(paths.configPath)
+	cfg, bootstrap, err := loadDaemonConfig(ctx, paths.configPath, nonInteractive, os.Stdin, os.Stdout, os.Stderr)
 	if err != nil {
-		if os.IsNotExist(err) && isInteractive(os.Stdin) {
-			fmt.Fprintf(os.Stdout, "No valid config at %s.\n", paths.configPath)
-			yes, err := promptYesNo(ctx, os.Stdin, os.Stdout, "Create one now?")
-			if err != nil {
-				return err
-			}
-			if !yes {
-				return fmt.Errorf("no valid config at %s; run `sishc init --config %s`", paths.configPath, paths.configPath)
-			}
-			if err := runInit(ctx, []string{"--config", paths.configPath}, os.Stdin, os.Stdout); err != nil {
-				return err
-			}
-			fmt.Fprintf(os.Stdout, "Starting daemon using %s\n", paths.configPath)
-			cfg, err = config.Load(paths.configPath)
-		} else {
-			return fmt.Errorf("config %q not found; run `sishc init --config %s`", paths.configPath, paths.configPath)
+		return err
+	}
+	if !bootstrap {
+		if err := cfg.ValidateGlobals(); err != nil {
+			return fmt.Errorf("config validation error: %w", err)
 		}
-	}
-	if err := cfg.ValidateGlobals(); err != nil {
-		return fmt.Errorf("config validation error: %w", err)
-	}
-	if err := preflightDependencies(); err != nil {
-		return err
+		if err := preflightDependencies(); err != nil {
+			return err
+		}
 	}
 	lockFile, err := acquireConfigLock(paths.configPath)
 	if err != nil {
@@ -163,6 +151,78 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 }
 
+func loadDaemonConfig(ctx context.Context, configPath string, nonInteractive bool, in io.Reader, out io.Writer, errOut io.Writer) (config.Config, bool, error) {
+	cfg, err := config.Load(configPath)
+	if err == nil && !isEmptyConfig(cfg) {
+		return cfg, false, nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return config.Config{}, false, err
+	}
+	if nonInteractive {
+		if err := bootstrapConfig(configPath); err != nil {
+			return config.Config{}, false, err
+		}
+		cfg = config.Config{
+			WebEnabled: true,
+			WebListen:  bootstrapWebListen,
+		}
+		fmt.Fprintf(errOut, "ERROR: Configuration file is empty. Please edit it at %s\n", configPath)
+		return cfg, true, nil
+	}
+	if os.IsNotExist(err) && isInteractiveReader(in) {
+		fmt.Fprintf(os.Stdout, "No valid config at %s.\n", configPath)
+		yes, err := promptYesNo(ctx, in, out, "Create one now?")
+		if err != nil {
+			return config.Config{}, false, err
+		}
+		if !yes {
+			return config.Config{}, false, fmt.Errorf("no valid config at %s; run `sishc init --config %s`", configPath, configPath)
+		}
+		if err := runInit(ctx, []string{"--config", configPath}, in, out); err != nil {
+			return config.Config{}, false, err
+		}
+		fmt.Fprintf(out, "Starting daemon using %s\n", configPath)
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			return config.Config{}, false, err
+		}
+		return cfg, false, nil
+	}
+	if os.IsNotExist(err) {
+		return config.Config{}, false, fmt.Errorf("config %q not found; run `sishc init --config %s`", configPath, configPath)
+	}
+	return config.Config{}, false, fmt.Errorf("config %q is empty; run `sishc init --config %s`", configPath, configPath)
+}
+
+func isEmptyConfig(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.SSHKey) == "" &&
+		strings.TrimSpace(cfg.LocalProtocol) == "" &&
+		strings.TrimSpace(cfg.LocalHost) == "" &&
+		cfg.LocalPort == 0 &&
+		cfg.RemotePort == 0 &&
+		strings.TrimSpace(cfg.RemoteServer) == "" &&
+		!cfg.WebEnabled &&
+		strings.TrimSpace(cfg.WebListen) == "" &&
+		len(cfg.Tunnels) == 0
+}
+
+func isInteractiveReader(r io.Reader) bool {
+	file, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	return isInteractive(file)
+}
+
+func bootstrapConfig(configPath string) error {
+	cfg := config.Config{
+		WebEnabled: true,
+		WebListen:  bootstrapWebListen,
+	}
+	return config.Save(configPath, cfg)
+}
+
 func acquireConfigLock(configPath string) (*lockfile.Lock, error) {
 	return lockfile.Acquire(configPath)
 }
@@ -177,6 +237,26 @@ func preflightDependencies() error {
 
 var execLookPath = func(file string) (string, error) {
 	return exec.LookPath(file)
+}
+
+func parseDaemonArgs(args []string) (bool, pathConfig, error) {
+	fs := flag.NewFlagSet("sishc daemon", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", config.DefaultConfigPath(), "config file path")
+	logDir := fs.String("log-dir", config.DefaultLogDir(), "log directory path")
+	socketPath := fs.String("socket", config.DefaultSocketPath(), "control socket path")
+	nonInteractive := fs.Bool("non-interactive", false, "disable prompts and bootstrap empty config")
+	if err := fs.Parse(args); err != nil {
+		return false, pathConfig{}, err
+	}
+	if len(fs.Args()) != 0 {
+		return false, pathConfig{}, fmt.Errorf("usage: sishc daemon [flags]")
+	}
+	return *nonInteractive, pathConfig{
+		configPath: *configPath,
+		logDir:     *logDir,
+		socketPath: *socketPath,
+	}, nil
 }
 
 func runStatus(args []string) error {
@@ -1274,6 +1354,7 @@ Flags:
   --config PATH   Config file path
   --log-dir PATH  Log directory path
   --socket PATH   Control socket path
+  --non-interactive  Disable prompts and bootstrap empty config
 
 Tunnel flags:
   --ssh-key PATH

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -474,6 +475,53 @@ func TestParseStatusArgsSupportsVerboseAndName(t *testing.T) {
 	}
 	if verbose {
 		t.Fatal("verbose = true, want false")
+	}
+}
+
+func TestParseDaemonArgsSupportsNonInteractive(t *testing.T) {
+	nonInteractive, paths, err := parseDaemonArgs([]string{"--non-interactive", "--config", "/tmp/config.yaml"})
+	if err != nil {
+		t.Fatalf("parseDaemonArgs() error = %v", err)
+	}
+	if !nonInteractive {
+		t.Fatal("nonInteractive = false, want true")
+	}
+	if paths.configPath != "/tmp/config.yaml" {
+		t.Fatalf("paths.configPath = %q, want /tmp/config.yaml", paths.configPath)
+	}
+}
+
+func TestLoadDaemonConfigBootstrapsEmptyConfigWhenNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	var errOut bytes.Buffer
+	cfg, bootstrap, err := loadDaemonConfig(context.Background(), path, true, strings.NewReader(""), io.Discard, &errOut)
+	if err != nil {
+		t.Fatalf("loadDaemonConfig() error = %v", err)
+	}
+	if !bootstrap {
+		t.Fatal("bootstrap = false, want true")
+	}
+	if !cfg.WebEnabled {
+		t.Fatal("cfg.WebEnabled = false, want true")
+	}
+	if cfg.WebListen != bootstrapWebListen {
+		t.Fatalf("cfg.WebListen = %q, want %q", cfg.WebListen, bootstrapWebListen)
+	}
+	if got := errOut.String(); !strings.Contains(got, "ERROR: Configuration file is empty. Please edit it at") {
+		t.Fatalf("stderr = %q, want bootstrap error", got)
+	}
+
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !saved.WebEnabled || saved.WebListen != bootstrapWebListen {
+		t.Fatalf("saved config = %+v, want web bootstrap defaults", saved)
 	}
 }
 

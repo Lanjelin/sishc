@@ -40,4 +40,4 @@ WORKDIR "${HOME}"
 VOLUME "${HOME}"
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
-CMD ["/usr/local/bin/sishc"]
+CMD ["/usr/local/bin/sishc", "--non-interactive"]
