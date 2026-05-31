@@ -11,8 +11,8 @@ Docker is the easiest way to run it.
 1. Create a config in a mounted folder. Start from the example below and make sure `ssh_key`, `remote_server`, and `remote_port` are set.
 2. Make the SSH key available inside the container. The simplest way is to mount it somewhere under `/config` and point `ssh_key` at that path.
 3. If you want the web UI, set `web_enabled: true` and `web_listen: 0.0.0.0:5000` in the config.
-4. Start the container and expose port `5000`.
-5. Open the web UI in your browser.
+4. Start the container and expose port `5000`. If the config file is missing or empty, the container bootstraps a minimal web-only config and tells you to edit `/config/config.yaml`.
+5. Open the web UI in your browser and fill in the remaining config there if needed.
 
 ```bash
 docker run \

@@ -505,6 +505,12 @@ func (s *Server) dashboardRows(cfg config.Config) ([]TunnelRow, string) {
 	if err != nil {
 		daemonErr = "Daemon offline"
 	}
+	if err := cfg.ValidateGlobals(); err != nil {
+		if daemonErr != "" {
+			daemonErr += "; "
+		}
+		daemonErr += "Config validation error: " + err.Error()
+	}
 	if resp.OK {
 		sortStatuses(resp.Statuses)
 		for _, st := range resp.Statuses {

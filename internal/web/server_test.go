@@ -54,6 +54,18 @@ func TestHandleSettingsGetRendersContent(t *testing.T) {
 	}
 }
 
+func TestDashboardRowsReportsConfigValidationError(t *testing.T) {
+	s := New("", "", "/tmp/nonexistent.sock", "/")
+	cfg := config.Config{
+		WebEnabled: true,
+		WebListen:  "127.0.0.1:5000",
+	}
+	_, msg := s.dashboardRows(cfg)
+	if !strings.Contains(msg, "Config validation error:") {
+		t.Fatalf("dashboard message = %q, want config validation error", msg)
+	}
+}
+
 func TestBuildTunnelFromFormKeepsAddSparse(t *testing.T) {
 	cfg := config.Config{
 		SSHKey:       "~/.ssh/id_rsa",

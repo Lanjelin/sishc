@@ -499,12 +499,9 @@ func TestLoadDaemonConfigBootstrapsEmptyConfigWhenNonInteractive(t *testing.T) {
 	}
 
 	var errOut bytes.Buffer
-	cfg, bootstrap, err := loadDaemonConfig(context.Background(), path, true, strings.NewReader(""), io.Discard, &errOut)
+	cfg, err := loadDaemonConfig(context.Background(), path, true, strings.NewReader(""), io.Discard, &errOut)
 	if err != nil {
 		t.Fatalf("loadDaemonConfig() error = %v", err)
-	}
-	if !bootstrap {
-		t.Fatal("bootstrap = false, want true")
 	}
 	if !cfg.WebEnabled {
 		t.Fatal("cfg.WebEnabled = false, want true")

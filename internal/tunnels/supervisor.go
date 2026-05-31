@@ -253,7 +253,8 @@ func (s *Supervisor) reconcile(ctx context.Context) error {
 		return err
 	}
 	if err := cfg.ValidateGlobals(); err != nil {
-		return err
+		s.lifecyclef("config validation error: %v", err)
+		return nil
 	}
 	if info, err := os.Stat(s.cfgPath); err == nil {
 		s.mu.Lock()

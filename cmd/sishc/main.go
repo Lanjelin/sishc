@@ -99,17 +99,9 @@ func runDaemon(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, bootstrap, err := loadDaemonConfig(ctx, paths.configPath, nonInteractive, os.Stdin, os.Stdout, os.Stderr)
+	cfg, err := loadDaemonConfig(ctx, paths.configPath, nonInteractive, os.Stdin, os.Stdout, os.Stderr)
 	if err != nil {
 		return err
-	}
-	if !bootstrap {
-		if err := cfg.ValidateGlobals(); err != nil {
-			return fmt.Errorf("config validation error: %w", err)
-		}
-		if err := preflightDependencies(); err != nil {
-			return err
-		}
 	}
 	lockFile, err := acquireConfigLock(paths.configPath)
 	if err != nil {
@@ -151,48 +143,48 @@ func runDaemon(ctx context.Context, args []string) error {
 	}
 }
 
-func loadDaemonConfig(ctx context.Context, configPath string, nonInteractive bool, in io.Reader, out io.Writer, errOut io.Writer) (config.Config, bool, error) {
+func loadDaemonConfig(ctx context.Context, configPath string, nonInteractive bool, in io.Reader, out io.Writer, errOut io.Writer) (config.Config, error) {
 	cfg, err := config.Load(configPath)
 	if err == nil && !isEmptyConfig(cfg) {
-		return cfg, false, nil
+		return cfg, nil
 	}
 	if err != nil && !os.IsNotExist(err) {
-		return config.Config{}, false, err
+		return config.Config{}, err
 	}
 	if nonInteractive {
 		if err := bootstrapConfig(configPath); err != nil {
-			return config.Config{}, false, err
+			return config.Config{}, err
 		}
 		cfg = config.Config{
 			WebEnabled: true,
 			WebListen:  bootstrapWebListen,
 		}
 		fmt.Fprintf(errOut, "ERROR: Configuration file is empty. Please edit it at %s\n", configPath)
-		return cfg, true, nil
+		return cfg, nil
 	}
 	if os.IsNotExist(err) && isInteractiveReader(in) {
 		fmt.Fprintf(os.Stdout, "No valid config at %s.\n", configPath)
 		yes, err := promptYesNo(ctx, in, out, "Create one now?")
 		if err != nil {
-			return config.Config{}, false, err
+			return config.Config{}, err
 		}
 		if !yes {
-			return config.Config{}, false, fmt.Errorf("no valid config at %s; run `sishc init --config %s`", configPath, configPath)
+			return config.Config{}, fmt.Errorf("no valid config at %s; run `sishc init --config %s`", configPath, configPath)
 		}
 		if err := runInit(ctx, []string{"--config", configPath}, in, out); err != nil {
-			return config.Config{}, false, err
+			return config.Config{}, err
 		}
 		fmt.Fprintf(out, "Starting daemon using %s\n", configPath)
 		cfg, err = config.Load(configPath)
 		if err != nil {
-			return config.Config{}, false, err
+			return config.Config{}, err
 		}
-		return cfg, false, nil
+		return cfg, nil
 	}
 	if os.IsNotExist(err) {
-		return config.Config{}, false, fmt.Errorf("config %q not found; run `sishc init --config %s`", configPath, configPath)
+		return config.Config{}, fmt.Errorf("config %q not found; run `sishc init --config %s`", configPath, configPath)
 	}
-	return config.Config{}, false, fmt.Errorf("config %q is empty; run `sishc init --config %s`", configPath, configPath)
+	return config.Config{}, fmt.Errorf("config %q is empty; run `sishc init --config %s`", configPath, configPath)
 }
 
 func isEmptyConfig(cfg config.Config) bool {
