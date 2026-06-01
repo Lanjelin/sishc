@@ -75,6 +75,7 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 		_, _ = logWriter.Write([]byte("HTTP: http://example.com\n"))
 		_, _ = logWriter.Write([]byte("connect_to localhost port 8060: failed.\n"))
 		_, _ = logWriter.Write([]byte("ssh: rejected: connect failed (Connection refused)\n"))
+		_, _ = logWriter.Write([]byte("ssh: example@remote.example: Permission denied (publickey).\n"))
 		_, _ = logWriter.Write([]byte("hello\n"))
 		return proc, []string{"ssh", resolved.RemoteForward()}, nil
 	}
@@ -147,6 +148,9 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	if strings.Contains(logText, "Warning: Permanently added") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
+	if strings.Contains(logText, "Warning: Identity file") {
+		t.Fatalf("log contains identity warning chatter: %q", logText)
+	}
 	if strings.Contains(logText, "Press Ctrl-C to close the session.") {
 		t.Fatalf("log contains startup chatter: %q", logText)
 	}
@@ -156,11 +160,14 @@ func TestSupervisorStartsTunnelAndTracksStatus(t *testing.T) {
 	if !strings.Contains(logText, "hello") {
 		t.Fatalf("log missing real tunnel output: %q", logText)
 	}
-	if !strings.Contains(logText, "connect_to localhost port 8060: failed.") {
-		t.Fatalf("log missing local connect failure: %q", logText)
+	if !strings.Contains(logText, "Error: Connection to localhost port 8060 failed.") {
+		t.Fatalf("log missing normalized local connect failure: %q", logText)
 	}
-	if !strings.Contains(logText, "ssh: rejected: connect failed (Connection refused)") {
-		t.Fatalf("log missing ssh error: %q", logText)
+	if !strings.Contains(logText, "Error: Connection refused while connecting to local backend") {
+		t.Fatalf("log missing normalized ssh error: %q", logText)
+	}
+	if !strings.Contains(logText, "Error: Permission denied (publickey) for ") {
+		t.Fatalf("log missing normalized publickey error: %q", logText)
 	}
 }
 

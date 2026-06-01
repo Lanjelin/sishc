@@ -64,6 +64,30 @@ func TestRenderLogLineStylesSemanticTunnelLog(t *testing.T) {
 	}
 }
 
+func TestRenderLogLineStylesErrorLine(t *testing.T) {
+	line := "Error: Connection to 127.0.0.1 port 8443 failed."
+
+	rendered := string(renderLogLine(line))
+	if !strings.Contains(rendered, `class="log-error"`) {
+		t.Fatalf("missing error class: %q", rendered)
+	}
+	if !strings.Contains(rendered, line) {
+		t.Fatalf("rendered output lost error text: %q", rendered)
+	}
+}
+
+func TestRenderLogLineStylesWarningLine(t *testing.T) {
+	line := "Warning: Identity file /config/.ssh/lol not accessible: No such file or directory."
+
+	rendered := string(renderLogLine(line))
+	if !strings.Contains(rendered, `class="log-warning"`) {
+		t.Fatalf("missing warning class: %q", rendered)
+	}
+	if !strings.Contains(rendered, line) {
+		t.Fatalf("rendered output lost warning text: %q", rendered)
+	}
+}
+
 func TestRenderLogLinesReverseOrder(t *testing.T) {
 	lines := []string{"oldest", "middle", "newest"}
 	rendered := renderLogLines(lines)

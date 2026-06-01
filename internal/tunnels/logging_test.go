@@ -79,3 +79,42 @@ func TestTunnelOutputWriterCapturesPrefixedAssignedURL(t *testing.T) {
 		t.Fatalf("gotURL = %q, want https://example.com", gotURL)
 	}
 }
+
+func TestTunnelOutputWriterNormalizesSSHConnectionFailures(t *testing.T) {
+	var buf bytes.Buffer
+	w := newTunnelOutputWriter(&buf, nil)
+
+	input := "ssh: Could not resolve hostname example.invalid: Name or service not known\n" +
+		"ssh: connect to host example.invalid port 8443: Connection refused\n" +
+		"Warning: Identity file /config/.ssh/lol not accessible: No such file or directory.\n" +
+		"example@remote.example: Permission denied (publickey).\n" +
+		"ssh: rejected: connect failed (Connection refused)\n" +
+		"connect_to 127.0.0.1 port 8443: failed.\n"
+
+	if _, err := w.Write([]byte(input)); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	got := buf.String()
+	if strings.Contains(got, "ssh: Could not resolve hostname") || strings.Contains(got, "ssh: connect to host") {
+		t.Fatalf("buffer contains raw SSH failure text: %q", got)
+	}
+	if !strings.Contains(got, "Error: Could not resolve hostname example.invalid: Name or service not known") {
+		t.Fatalf("buffer missing normalized hostname error: %q", got)
+	}
+	if !strings.Contains(got, "Error: Could not connect to host example.invalid port 8443: Connection refused") {
+		t.Fatalf("buffer missing normalized remote connect error: %q", got)
+	}
+	if !strings.Contains(got, "Warning: Identity file /config/.ssh/lol not accessible: No such file or directory.") {
+		t.Fatalf("buffer missing normalized identity warning: %q", got)
+	}
+	if !strings.Contains(got, "Error: Permission denied (publickey) for example@remote.example") {
+		t.Fatalf("buffer missing normalized publickey error: %q", got)
+	}
+	if !strings.Contains(got, "Error: Connection refused while connecting to local backend") {
+		t.Fatalf("buffer missing normalized local rejected error: %q", got)
+	}
+	if !strings.Contains(got, "Error: Connection to 127.0.0.1 port 8443 failed.") {
+		t.Fatalf("buffer missing normalized backend connect error: %q", got)
+	}
+}

@@ -972,6 +972,16 @@ textarea.code {
   color: var(--link);
 }
 
+.log-error {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.log-warning {
+  color: var(--warn);
+  font-weight: 700;
+}
+
 .ansi-bold { font-weight: 700; }
 .ansi-fg-30 { color: #2e3440; }
 .ansi-fg-31 { color: #bf616a; }

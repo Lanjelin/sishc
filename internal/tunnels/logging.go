@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -204,10 +205,18 @@ func sanitizeLogFileName(name string) string {
 
 func normalizeTunnelControlLine(line string) string {
 	line = strings.TrimSpace(stripANSI(line))
+	switch {
+	case strings.HasPrefix(line, "connect_to ") && strings.HasSuffix(line, ": failed."):
+		if host, port, ok := hostPortFromConnectToLine(line); ok {
+			return "Error: Connection to " + host + " port " + port + " failed."
+		}
+	}
 	if idx := strings.Index(line, ": "); idx > 0 {
 		rest := strings.TrimSpace(line[idx+2:])
 		switch {
 		case strings.HasPrefix(rest, "Warning: Permanently added "):
+			return rest
+		case strings.HasPrefix(rest, "Warning: Identity file ") && strings.HasSuffix(rest, " not accessible: No such file or directory."):
 			return rest
 		case strings.HasPrefix(rest, "Starting SSH Forwarding service for "):
 			return rest
@@ -227,6 +236,28 @@ func normalizeTunnelControlLine(line string) string {
 			return rest
 		case rest == "Error #01: net/http: abort Handler":
 			return rest
+		case strings.HasPrefix(rest, "Could not resolve hostname "):
+			if host, ok := between(rest, "Could not resolve hostname ", ": Name or service not known"); ok {
+				return "Error: Could not resolve hostname " + host + ": Name or service not known"
+			}
+			return rest
+		case strings.HasPrefix(rest, "connect to host "):
+			if host, port, ok := hostPortFromConnectLine(rest); ok {
+				return "Error: Could not connect to host " + host + " port " + port + ": Connection refused"
+			}
+			return rest
+		case strings.HasPrefix(rest, "rejected: connect failed (Connection refused)"):
+			return "Error: Connection refused while connecting to local backend"
+		case strings.HasPrefix(rest, "connect_to ") && strings.HasSuffix(rest, ": failed."):
+			if host, port, ok := hostPortFromConnectToLine(rest); ok {
+				return "Error: Connection to " + host + " port " + port + " failed."
+			}
+			return rest
+		case strings.HasSuffix(rest, ": Permission denied (publickey)."):
+			if userHost, ok := between(rest, "", ": Permission denied (publickey)."); ok {
+				return "Error: Permission denied (publickey) for " + userHost
+			}
+			return rest
 		}
 	}
 	return line
@@ -239,6 +270,8 @@ func filterTunnelLogLine(line string) (string, bool) {
 		return "", true
 	case strings.HasPrefix(line, "Warning: Permanently added "):
 		return "", true
+	case strings.HasPrefix(line, "Warning: Identity file ") && strings.HasSuffix(line, " not accessible: No such file or directory."):
+		return line, false
 	case strings.HasPrefix(line, "Starting SSH Forwarding service for "):
 		return "", true
 	case line == "Press Ctrl-C to close the session.":
@@ -257,6 +290,11 @@ func filterTunnelLogLine(line string) (string, bool) {
 		return "", true
 	case strings.HasPrefix(line, "Connection to ") && strings.HasSuffix(line, " closed by remote host."):
 		return line, false
+	case strings.HasSuffix(line, ": Permission denied (publickey)."):
+		if userHost, ok := between(line, "", ": Permission denied (publickey)."); ok {
+			return "Error: Permission denied (publickey) for " + userHost, false
+		}
+		return line, false
 	default:
 		return line, false
 	}
@@ -264,4 +302,52 @@ func filterTunnelLogLine(line string) (string, bool) {
 
 func stripANSI(s string) string {
 	return ansiRegexp.ReplaceAllString(s, "")
+}
+
+func between(value, prefix, suffix string) (string, bool) {
+	if prefix != "" {
+		if !strings.HasPrefix(value, prefix) {
+			return "", false
+		}
+		value = strings.TrimPrefix(value, prefix)
+	}
+	if suffix != "" {
+		if !strings.HasSuffix(value, suffix) {
+			return "", false
+		}
+		value = strings.TrimSuffix(value, suffix)
+	}
+	return strings.TrimSpace(value), true
+}
+
+func hostPortFromConnectLine(rest string) (string, string, bool) {
+	rest = strings.TrimPrefix(rest, "connect to host ")
+	host, remainder, found := strings.Cut(rest, " port ")
+	if !found {
+		return "", "", false
+	}
+	port, suffix, found := strings.Cut(remainder, ": ")
+	if !found || suffix != "Connection refused" {
+		return "", "", false
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(port)); err != nil {
+		return "", "", false
+	}
+	return strings.TrimSpace(host), strings.TrimSpace(port), true
+}
+
+func hostPortFromConnectToLine(rest string) (string, string, bool) {
+	rest = strings.TrimPrefix(rest, "connect_to ")
+	host, remainder, found := strings.Cut(rest, " port ")
+	if !found {
+		return "", "", false
+	}
+	port, suffix, found := strings.Cut(remainder, ": ")
+	if !found || suffix != "failed." {
+		return "", "", false
+	}
+	if _, err := strconv.Atoi(strings.TrimSpace(port)); err != nil {
+		return "", "", false
+	}
+	return strings.TrimSpace(host), strings.TrimSpace(port), true
 }

@@ -845,6 +845,12 @@ func renderLogLines(lines []string) []template.HTML {
 
 func renderLogLine(line string) template.HTML {
 	if !strings.Contains(line, "\x1b[") {
+		if strings.HasPrefix(line, "Warning: ") {
+			return template.HTML(`<span class="log-warning">` + htmlpkg.EscapeString(line) + `</span>`)
+		}
+		if strings.HasPrefix(line, "Error: ") {
+			return template.HTML(`<span class="log-error">` + htmlpkg.EscapeString(line) + `</span>`)
+		}
 		if rendered, ok := renderSemanticTunnelLogLine(line); ok {
 			return rendered
 		}
