@@ -40,6 +40,30 @@ func TestRenderLogLinePreservesANSIFormatting(t *testing.T) {
 	}
 }
 
+func TestRenderLogLineStylesSemanticTunnelLog(t *testing.T) {
+	line := "2026/05/31 - 20:46:02 | " + testWebHost + " |  304  |  112.682502ms |    " + testPublicIP + " |  GET      /themes.json"
+
+	rendered := string(renderLogLine(line))
+	if strings.Contains(rendered, "\x1b[") {
+		t.Fatalf("semantic log rendered ANSI escape codes: %q", rendered)
+	}
+	if !strings.Contains(rendered, `class="log-status log-status-3xx"`) {
+		t.Fatalf("missing 3xx status class: %q", rendered)
+	}
+	if !strings.Contains(rendered, `class="log-method log-method-get"`) {
+		t.Fatalf("missing GET method class: %q", rendered)
+	}
+	if !strings.Contains(rendered, `class="log-status log-status-3xx">  304  </span>`) {
+		t.Fatalf("semantic log stripped status padding: %q", rendered)
+	}
+	if !strings.Contains(rendered, `class="log-method log-method-get">GET</span><span class="log-path">     /themes.json</span>`) {
+		t.Fatalf("semantic log stripped request padding: %q", rendered)
+	}
+	if !strings.Contains(rendered, "/themes.json") {
+		t.Fatalf("rendered output lost request path: %q", rendered)
+	}
+}
+
 func TestRenderLogLinesReverseOrder(t *testing.T) {
 	lines := []string{"oldest", "middle", "newest"}
 	rendered := renderLogLines(lines)

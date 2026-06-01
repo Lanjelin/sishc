@@ -900,6 +900,78 @@ textarea.code {
   color: var(--log-text);
 }
 
+.log-ts,
+.log-host,
+.log-latency,
+.log-client {
+  color: var(--muted);
+}
+
+.log-status {
+  font-weight: 700;
+}
+
+.log-status-2xx {
+  color: var(--ok);
+}
+
+.log-status-3xx {
+  color: var(--text);
+}
+
+.log-status-4xx {
+  color: var(--warn);
+}
+
+.log-status-5xx {
+  color: var(--bad);
+}
+
+.log-status-other {
+  color: var(--muted);
+}
+
+.log-method {
+  font-weight: 700;
+}
+
+.log-method-get,
+.log-method-post {
+  color: var(--link);
+}
+
+.log-method-put {
+  color: var(--warn);
+}
+
+.log-method-patch {
+  color: var(--ok);
+}
+
+.log-method-delete {
+  color: var(--bad);
+}
+
+.log-method-head {
+  color: var(--text);
+  background: color-mix(in srgb, var(--link) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--link) 45%, transparent);
+  border-radius: 4px;
+  padding: 0 .15rem;
+}
+
+.log-method-options {
+  color: var(--muted);
+}
+
+.log-method-trace {
+  color: var(--muted);
+}
+
+.log-method-connect {
+  color: var(--link);
+}
+
 .ansi-bold { font-weight: 700; }
 .ansi-fg-30 { color: #2e3440; }
 .ansi-fg-31 { color: #bf616a; }

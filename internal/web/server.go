@@ -845,6 +845,9 @@ func renderLogLines(lines []string) []template.HTML {
 
 func renderLogLine(line string) template.HTML {
 	if !strings.Contains(line, "\x1b[") {
+		if rendered, ok := renderSemanticTunnelLogLine(line); ok {
+			return rendered
+		}
 		return template.HTML(htmlpkg.EscapeString(line))
 	}
 
@@ -897,6 +900,94 @@ func renderLogLine(line string) template.HTML {
 		out.WriteString("</span>")
 	}
 	return template.HTML(out.String())
+}
+
+func renderSemanticTunnelLogLine(line string) (template.HTML, bool) {
+	parts := strings.SplitN(line, "|", 6)
+	if len(parts) != 6 {
+		return "", false
+	}
+
+	timestamp := parts[0]
+	host := parts[1]
+	status := parts[2]
+	latency := parts[3]
+	client := parts[4]
+	request := parts[5]
+
+	requestTrim := strings.TrimLeft(request, " ")
+	leading := request[:len(request)-len(requestTrim)]
+	method, path, ok := strings.Cut(requestTrim, " ")
+	if !ok {
+		return "", false
+	}
+	statusValue := strings.TrimSpace(status)
+	methodValue := strings.ToUpper(strings.TrimSpace(method))
+
+	if !isSemanticStatus(statusValue) || !isSemanticMethod(methodValue) {
+		return "", false
+	}
+
+	var out strings.Builder
+	out.WriteString(`<span class="log-ts">`)
+	out.WriteString(htmlpkg.EscapeString(timestamp))
+	out.WriteString(`</span>|<span class="log-host">`)
+	out.WriteString(htmlpkg.EscapeString(host))
+	out.WriteString(`</span>|<span class="log-status log-status-`)
+	out.WriteString(semanticStatusClass(statusValue))
+	out.WriteString(`">`)
+	out.WriteString(htmlpkg.EscapeString(status))
+	out.WriteString(`</span>|<span class="log-latency">`)
+	out.WriteString(htmlpkg.EscapeString(latency))
+	out.WriteString(`</span>|<span class="log-client">`)
+	out.WriteString(htmlpkg.EscapeString(client))
+	out.WriteString(`</span>|`)
+	out.WriteString(htmlpkg.EscapeString(leading))
+	out.WriteString(`<span class="log-method log-method-`)
+	out.WriteString(strings.ToLower(methodValue))
+	out.WriteString(`">`)
+	out.WriteString(htmlpkg.EscapeString(method))
+	out.WriteString(`</span>`)
+	out.WriteString(`<span class="log-path">`)
+	out.WriteString(htmlpkg.EscapeString(path))
+	out.WriteString(`</span>`)
+	return template.HTML(out.String()), true
+}
+
+func isSemanticStatus(status string) bool {
+	if len(status) != 3 {
+		return false
+	}
+	for _, r := range status {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func semanticStatusClass(status string) string {
+	switch status[0] {
+	case '2':
+		return "2xx"
+	case '3':
+		return "3xx"
+	case '4':
+		return "4xx"
+	case '5':
+		return "5xx"
+	default:
+		return "other"
+	}
+}
+
+func isSemanticMethod(method string) bool {
+	switch method {
+	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT":
+		return true
+	default:
+		return false
+	}
 }
 
 type ansiStyle struct {
