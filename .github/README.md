@@ -1,6 +1,8 @@
 # SISHC
 
-`sishc` is a small daemon-first CLI for managing [sish](https://docs.ssi.sh/) tunnels. It keeps a config file as source of truth, runs tunnels in the background, and exposes a Unix socket for `status`, `logs`, and `reconcile`.
+`sishc` is a small daemon-first CLI for managing [sish](https://docs.ssi.sh/) tunnels.
+
+It keeps a config file as the source of truth, runs tunnels in the background, and exposes a web UI when enabled.
 
 The binary is called `sishc`. The release image is `ghcr.io/lanjelin/sishc:latest`.
 
@@ -8,11 +10,11 @@ The binary is called `sishc`. The release image is `ghcr.io/lanjelin/sishc:lates
 
 Docker is the easiest way to run it.
 
-1. Create a config in a mounted folder. Start from the example below and make sure `ssh_key`, `remote_server`, and `remote_port` are set.
-2. Make the SSH key available inside the container. The simplest way is to mount it somewhere under `/config` and point `ssh_key` at that path.
-3. If you want the web UI, set `web_enabled: true` and `web_listen: 0.0.0.0:5000` in the config.
-4. Start the container and expose port `5000`. If the config file is missing or empty, the container bootstraps a minimal web-only config and tells you to edit `/config/config.yaml`.
-5. Open the web UI in your browser and fill in the remaining config there if needed.
+1. Put your SSH key somewhere under `/config`, for example `/config/id_rsa`.
+2. If you already have a `config.yaml`, place it at `/config/config.yaml`.
+3. Start the container.
+4. If the config is empty, the container creates a minimal config.
+5. Open the web UI at `http://yourhost:5000` to complete the setup.
 
 ```bash
 docker run \
@@ -23,13 +25,7 @@ docker run \
   ghcr.io/lanjelin/sishc:latest
 ```
 
-The container reads its config from `/config/config.yaml`. It also uses `/config` for logs, the socket, and `known_hosts`.
-
-The container runs with `PUID` / `PGID`, defaulting to `1000:1000`. Change those if your mounted `/config` belongs to a different user.
-
-If you are running locally outside Docker, the default web bind is `127.0.0.1:5000`.
-
-If you want the local `sishc` binary to talk to the daemon inside Docker, point it at the mounted directory:
+If you want the local `sishc` binary to talk to the daemon inside Docker:
 
 ```bash
 export SISHC_CONFIG_FILE=/path/to/config/config.yaml
@@ -42,26 +38,23 @@ sishc status
 
 <table>
   <tr>
-    <td><figure><img src="./screenshots/sishc.png" alt="Dashboard"><figcaption>Dashboard</figcaption></figure></td>
-    <td><figure><img src="./screenshots/config.png" alt="Config"><figcaption>Config</figcaption></figure></td>
+    <td><img src="./screenshots/sishc.png" alt="Dashboard"></td>
+    <td><img src="./screenshots/config.png" alt="Config"></td>
   </tr>
   <tr>
-    <td><figure><img src="./screenshots/tunnels_new.png" alt="Add tunnel"><figcaption>Add tunnel</figcaption></figure></td>
-    <td><figure><img src="./screenshots/logs_sishc.png" alt="Logs"><figcaption>Logs</figcaption></figure></td>
+    <td><img src="./screenshots/tunnels_new.png" alt="Add tunnel"></td>
+    <td><img src="./screenshots/logs_sishc.png" alt="Logs"></td>
   </tr>
 </table>
 
 ## What it does
 
-- manages tunnel config through the CLI
-- can start a web UI from config if `web_enabled: true` is set
+- keeps tunnels alive and reconnects on connection drops
+- manages tunnel config through the CLI or the web UI
+- supports `status`, `logs`, `add`, `update`, `remove`, `start`, `stop`, and `oneoff`
 - writes per-tunnel logs with rotation
-- supports temporary `oneoff` tunnels without touching config
-- keeps tunnels alive and automatically reconnects on connection drops
-
-For the server side that `sishc` connects to, see:
-
-- https://github.com/Lanjelin/sish-starter
+- can start the web UI from config
+- quickly expose local endpoints for testing using `sishc o <port>`
 
 ## Commands
 
@@ -80,23 +73,14 @@ sishc oneoff, o  Run a temporary tunnel
 sishc init       Create config interactively
 ```
 
-Tunnel flags:
+Helpful flags:
 
 ```text
 --ssh-key PATH
 --remote-port PORT
 --remote-server HOST
---local-protocol tcp|https
+--local-protocol http|https|tcp
 ```
-
-Notes:
-
-- `add` and `update` accept shorthand host/port forms and use globals when fields are omitted
-- `update` uses `--new-name` for rename
-- `start` and `stop` toggle `enabled`
-- `oneoff` prints the remote server output directly and does not write config
-- `status` can show one tunnel in detail
-- `logs --follow` follows rotated log files
 
 ## CLI examples
 
@@ -113,12 +97,6 @@ sishc update test229 :9090
 Updates only the local port. The host stays as-is.
 
 ```bash
-sishc add test331 6080
-```
-
-Uses `127.0.0.1` as the host and `6080` as the port.
-
-```bash
 sishc ls test229
 ```
 
@@ -131,25 +109,17 @@ sishc logs --follow test229
 Follows the tunnel log live.
 
 ```bash
-sishc o --local-protocol https cockpit.example.com 192.168.50.197:9090
+sishc o --local-protocol https cockpit.example.com 192.0.2.10:9090
 ```
 
-One-off HTTPS tunnel to `cockpit.example.com`.
-
-```bash
-sishc oneoff test229 localhost:8080
-```
-
-One-off tunnel with a fixed remote name and local `host:port`.
+One-off HTTPS tunnel to a remote host.
 
 ## Defaults and paths
 
-All defaults are XDG compliant.
-
 ```text
-Config: ~/.config/sishc/config.yaml
-Logs:   ~/.local/share/sishc/logs
-Socket: $XDG_RUNTIME_DIR/sishc.sock
+Config: XDG_CONFIG_HOME/sishc/config.yaml or ~/.config/sishc/config.yaml
+Logs:   XDG_DATA_HOME/sishc/logs or ~/.local/share/sishc/logs
+Socket: XDG_RUNTIME_DIR/sishc.sock or XDG_DATA_HOME/sishc/sishc.sock
         or ~/.local/share/sishc/sishc.sock
 ```
 
@@ -160,48 +130,17 @@ Useful environment variables:
 - `SISHC_SOCKET`
 - `SISHC_KNOWN_HOSTS`
 
-## Config
+## Server side
 
-Example sparse config:
+For the server side that `sishc` connects to, see:
 
-```yaml
-ssh_key: "~/.ssh/id_rsa"
-remote_port: 1433
-remote_server: sish.example.com
-local_host: caddy
-local_port: 80
-
-tunnels:
-  - name: test1.example.com
-  - name: test2
-    enabled: false
-    local_host: example_host
-  - name: test3
-    local_port: 1443
-  - name: test4
-    local_host: example_host2
-    local_port: 3000
-    ssh_key: "~/.ssh/id_rsa2"
-    remote_server: sish2.example.com
-    remote_port: 1723
-  - name: "2512" # Expose ssh port to example.com:2512
-    local_host: 192.168.50.80
-    local_port: 22
-    local_protocol: tcp
-```
-
-Web UI settings live in the same config:
-
-```yaml
-web_enabled: true
-web_listen: 127.0.0.1:5000
-```
+- https://github.com/Lanjelin/sish-starter
 
 ## Install
 
 ### Download a release
 
-Grab the `sishc` binary from GitHub Releases and drop it on your PATH.
+Grab the `sishc` binary from GitHub Releases and put it on your `PATH`.
 
 ### Build locally
 
@@ -214,3 +153,9 @@ go build ./cmd/sishc
 ```bash
 go run ./cmd/sishc
 ```
+
+## About this rewrite
+
+This is a Codex-assisted rewrite of the original bash+python version:
+
+- https://github.com/Lanjelin/sishc/tree/22ea2b3b55dc6ec9d120b19588c6a9ca740f7fa8
