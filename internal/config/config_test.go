@@ -150,6 +150,60 @@ func TestWriteAtomic(t *testing.T) {
 	}
 }
 
+func TestSaveThroughSymlinkUpdatesTarget(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.yaml")
+	link := filepath.Join(dir, "config.yaml")
+
+	cfg := Config{
+		SSHKey:       testSSHKey,
+		RemotePort:   testRemotePort,
+		RemoteServer: testRemoteServer,
+		WebEnabled:   true,
+		WebListen:    "127.0.0.1:5000",
+	}
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile(target) error = %v", err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	if err := Save(link, cfg); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("Lstat(link) error = %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("Save() replaced symlink with regular file")
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile(target) error = %v", err)
+	}
+	if !strings.Contains(string(data), "ssh_key:") {
+		t.Fatalf("target file not updated: %q", string(data))
+	}
+}
+
+func TestSaveFailsOnBrokenSymlink(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "config.yaml")
+	target := filepath.Join(dir, "missing.yaml")
+
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	err := Save(link, Config{})
+	if err == nil {
+		t.Fatal("Save() error = nil, want error for broken symlink")
+	}
+}
+
 func TestLoadExampleConfig(t *testing.T) {
 	path := filepath.Join("..", "..", "config-example.yaml")
 	got, err := Load(path)

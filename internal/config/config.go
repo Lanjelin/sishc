@@ -113,7 +113,11 @@ func Load(path string) (Config, error) {
 }
 
 func Save(path string, cfg Config) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	resolved, err := resolveWritePath(path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved), 0o755); err != nil {
 		return err
 	}
 	var b strings.Builder
@@ -142,7 +146,25 @@ func Save(path string, cfg Config) error {
 			}
 		}
 	}
-	return WriteAtomic(path, []byte(b.String()), 0o644)
+	return WriteAtomic(resolved, []byte(b.String()), 0o644)
+}
+
+func resolveWritePath(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return path, nil
+		}
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return path, nil
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	return resolved, nil
 }
 
 func WriteAtomic(path string, data []byte, perm os.FileMode) error {
